@@ -42,6 +42,12 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title(APP_TITLE)
+        try:  # 창 아이콘 (exe 안에 묶인 경우 _MEIPASS 기준)
+            base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+            self._icon = tk.PhotoImage(file=os.path.join(base, "assets", "icon.png"))
+            self.iconphoto(True, self._icon)
+        except Exception:
+            pass
         self.resizable(False, False)
         try:
             self.option_add("*Font", ("Malgun Gothic", 10))
