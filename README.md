@@ -44,6 +44,7 @@ py dojigae_core.py       # 기본값으로 output 폴더에 도면 생성
 ## 파일
 
 - `dojigae_gui.py` — 입력 화면
+- `dojigae_preview.py` — 입력 화면 오른쪽 미리보기(항목에 마우스를 올리면 해당 치수 강조)
 - `dojigae_core.py` — 형상 계산, PDF·DXF 생성
 - `dojigae_3d.py` — 단면 스윕 3D 메시, 구멍 불리언(manifold3d), STL 저장
 - `dojigae_viewer.py` — three.js 3D 뷰어 HTML 생성

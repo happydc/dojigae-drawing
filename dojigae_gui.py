@@ -13,6 +13,7 @@ from tkinter import ttk, filedialog, messagebox
 import dojigae_core as core
 import dojigae_3d as d3
 import dojigae_viewer as viewer
+from dojigae_preview import Preview
 
 APP_TITLE = "각궁도지개 제작도면 생성기"
 SETTINGS = os.path.join(os.path.expanduser("~"), ".gakgung_dojigae.json")
@@ -65,13 +66,22 @@ class App(tk.Tk):
         pad = dict(padx=6, pady=3)
         frm = ttk.LabelFrame(self, text="치수")
         frm.grid(row=0, column=0, sticky="nsew", padx=8, pady=8)
+        pfrm = ttk.LabelFrame(self, text="미리보기 — 항목에 마우스를 올려 보세요")
+        pfrm.grid(row=0, column=1, rowspan=5, sticky="nsew", padx=(0, 8), pady=8)
+        self.preview = Preview(pfrm)
+        self.preview.pack(padx=6, pady=6)
         for i, (k, lab, unit) in enumerate(FIELDS):
             r, c = i % 8, (i // 8) * 3
-            ttk.Label(frm, text=lab).grid(row=r, column=c, sticky="e", **pad)
+            la = ttk.Label(frm, text=lab)
+            la.grid(row=r, column=c, sticky="e", **pad)
             v = tk.StringVar(value=f"{core.PARAM[k]:g}")
-            ttk.Entry(frm, textvariable=v, width=8, justify="right").grid(row=r, column=c + 1, **pad)
+            en = ttk.Entry(frm, textvariable=v, width=8, justify="right")
+            en.grid(row=r, column=c + 1, **pad)
             ttk.Label(frm, text=unit).grid(row=r, column=c + 2, sticky="w", padx=(0, 14))
             self.vars[k] = v
+            self._hover(k, la, en)
+            en.bind("<FocusOut>", lambda e: self._refresh_preview(), add="+")
+            en.bind("<Return>", lambda e: self._refresh_preview(), add="+")
 
         gfrm = ttk.LabelFrame(self, text="굴곡 등급 (표준 곡선 대비 처짐 배율)")
         gfrm.grid(row=1, column=0, sticky="ew", padx=8, pady=4)
@@ -81,6 +91,7 @@ class App(tk.Tk):
             f = tk.StringVar(value=f"{g['f']:g}")
             ttk.Entry(gfrm, textvariable=f, width=6, justify="right").grid(row=0, column=i * 2 + 1, padx=(0, 16))
             self.gvars[k], self.fvars[k] = b, f
+        self._hover("grade", gfrm)
 
         ofrm = ttk.Frame(self)
         ofrm.grid(row=2, column=0, sticky="ew", padx=8, pady=4)
@@ -97,13 +108,36 @@ class App(tk.Tk):
         ttk.Checkbutton(tfrm, text="3D 모델·3D 프린트용 STL·3D 뷰어도 생성", variable=self.want3d).pack(side="left", padx=6, pady=4)
         ttk.Label(tfrm, text="프린터 베드 최대 길이").pack(side="left", padx=(16, 4))
         self.bed = tk.StringVar(value="250")
-        ttk.Entry(tfrm, textvariable=self.bed, width=6, justify="right").pack(side="left")
+        bed_en = ttk.Entry(tfrm, textvariable=self.bed, width=6, justify="right")
+        bed_en.pack(side="left")
+        self._hover("bed", bed_en)
         ttk.Label(tfrm, text="mm (초과 시 2분할 + 핀 구멍)").pack(side="left", padx=4)
         self.btn = ttk.Button(bfrm, text="도면 생성", command=self._run)
         self.btn.pack(side="left")
         ttk.Button(bfrm, text="기본값", command=self._reset).pack(side="left", padx=6)
         self.status = tk.StringVar(value="치수를 확인하고 [도면 생성]을 누르세요.")
         ttk.Label(bfrm, textvariable=self.status, foreground="#555").pack(side="left", padx=10)
+
+    def _hover(self, key, *widgets):
+        for w in widgets:
+            w.bind("<Enter>", lambda e, k=key: self.preview.show(k), add="+")
+            w.bind("<FocusIn>", lambda e, k=key: self.preview.show(k), add="+")
+            w.bind("<Leave>", lambda e: self._leave(), add="+")
+
+    def _leave(self):
+        self.preview.clear()
+
+    def _refresh_preview(self):
+        p = {}
+        for k, _, _ in FIELDS:
+            try:
+                p[k] = float(self.vars[k].get())
+            except ValueError:
+                pass
+        try:
+            self.preview.refresh(p)
+        except Exception:
+            pass
 
     def _browse(self):
         d = filedialog.askdirectory(initialdir=self.outdir.get() or os.path.expanduser("~"))
@@ -115,6 +149,7 @@ class App(tk.Tk):
             v.set(f"{self.defaults[k]:g}")
         for k, v in self.fvars.items():
             v.set(f"{self.def_f[k]:g}")
+        self._refresh_preview()
 
     def _collect(self):
         params, factors = {}, {}
@@ -213,6 +248,7 @@ class App(tk.Tk):
                     self.fvars[k].set(v)
             if data.get("outdir"):
                 self.outdir.set(data["outdir"])
+            self._refresh_preview()
         except Exception:
             pass
 
