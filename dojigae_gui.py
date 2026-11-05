@@ -84,9 +84,15 @@ class App(tk.Tk):
         ttk.Button(ofrm, text="찾기…", command=self._browse).pack(side="left")
 
         bfrm = ttk.Frame(self)
-        bfrm.grid(row=3, column=0, sticky="ew", padx=8, pady=(4, 10))
+        bfrm.grid(row=4, column=0, sticky="ew", padx=8, pady=(4, 10))
         self.want3d = tk.BooleanVar(value=True)
-        ttk.Checkbutton(ofrm, text="3D(STL·뷰어)도 생성", variable=self.want3d).pack(side="left", padx=10)
+        tfrm = ttk.LabelFrame(self, text="3D 출력")
+        tfrm.grid(row=3, column=0, sticky="ew", padx=8, pady=4)
+        ttk.Checkbutton(tfrm, text="3D 모델·3D 프린트용 STL·3D 뷰어도 생성", variable=self.want3d).pack(side="left", padx=6, pady=4)
+        ttk.Label(tfrm, text="프린터 베드 최대 길이").pack(side="left", padx=(16, 4))
+        self.bed = tk.StringVar(value="250")
+        ttk.Entry(tfrm, textvariable=self.bed, width=6, justify="right").pack(side="left")
+        ttk.Label(tfrm, text="mm (초과 시 2분할 + 핀 구멍)").pack(side="left", padx=4)
         self.btn = ttk.Button(bfrm, text="도면 생성", command=self._run)
         self.btn.pack(side="left")
         ttk.Button(bfrm, text="기본값", command=self._reset).pack(side="left", padx=6)
@@ -139,6 +145,11 @@ class App(tk.Tk):
             return
         out = self.outdir.get().strip() or "."
         want3d = self.want3d.get()
+        try:
+            bed = float(self.bed.get())
+        except ValueError:
+            messagebox.showwarning(APP_TITLE, "프린터 베드 길이가 숫자가 아닙니다.")
+            return
         self.btn.state(["disabled"])
         self.status.set("생성 중…")
 
@@ -146,7 +157,7 @@ class App(tk.Tk):
             try:
                 files = core.generate(out, keys=keys, params=params, factors=factors)
                 if want3d:
-                    files += d3.export_stl(out, keys=keys)
+                    files += d3.export_stl(out, keys=keys, bed=bed)
                     vf = os.path.join(out, f"dojigae_L{core.PARAM['L']:.0f}_3d_viewer.html")
                     with open(vf, "w", encoding="utf-8") as fp:
                         fp.write(viewer.build_html(keys))
@@ -161,7 +172,8 @@ class App(tk.Tk):
         self.btn.state(["!disabled"])
         self.status.set(f"완료: {len(files)}개 파일")
         self._save()
-        if messagebox.askyesno(APP_TITLE, "도면을 만들었습니다.\n\n" + "\n".join(os.path.basename(f) for f in files)
+        if messagebox.askyesno(APP_TITLE, f"도면을 만들었습니다. ({len(files)}개 파일)\n\n" + "\n".join(os.path.basename(f) for f in files[:12])
+                               + ("\n…" if len(files) > 12 else "")
                                + "\n\n저장 폴더를 열까요?"):
             if sys.platform.startswith("win"):
                 os.startfile(out)  # noqa

@@ -20,9 +20,9 @@ def build_html(keys=None):
     data = {}
     for k in keys or list(core.GRADES):
         G = core.GRADES[k]
-        m = d3.build_mesh(G["f"])
-        g = core.geometry(G["f"])
-        data[k] = dict(name=f"{k}형 {G['name']}", body=_pack(*m["body"]), leather=_pack(*m["leather"]),
+        body, m, g = d3.body_with_holes(G["f"])
+        bVF = d3._from_mf(body) if body is not None else m["body"]
+        data[k] = dict(name=f"{k}형 {G['name']}", body=_pack(*bVF), leather=_pack(*m["leather"]),
                        sag=round(float(-g["yc0"].min()), 1))
     P = core.PARAM
     info = dict(L=P["L"], T=P["T"], bend=P["bend_x"], R=round(P["T"] * P["edge_r_ratio"], 1),
@@ -110,7 +110,7 @@ function show(k){
  길이 ${INFO.L} · 너비 ${INFO.T} · 처짐 ${d.sag} mm<br>꺾임점: 왼쪽 끝에서 ${INFO.bend} mm<br>
  오목면 모서리 R${INFO.R} · 끈 감기 턱 h${INFO.lip} (끝에서 ${INFO.lipx})<br>
  <span class="sw" style="background:#1d7a52"></span>볼록면 C홈 ${INFO.groove} + 스웨이드 t${INFO.leather}<br>
- <span style="color:#7a7166">끈구멍 Ø${INFO.hole}·보어 Ø${INFO.cb}는 3D에 표시하지 않음</span>`;
+ 끈구멍 Ø${INFO.hole} · 매듭 보어 Ø${INFO.cb} (가죽 아래)`;
 }
 const gs=document.getElementById('grades');
 Object.keys(DATA).forEach(k=>{const b=document.createElement('button');b.textContent=DATA[k].name;b.dataset.k=k;b.onclick=()=>show(k);gs.appendChild(b)});
