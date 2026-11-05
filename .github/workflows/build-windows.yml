@@ -22,7 +22,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt pyinstaller
       - name: Smoke test (generate drawings)
-        run: python dojigae_core.py
+        run: |
+          python dojigae_core.py
+          python dojigae_3d.py
+          python dojigae_viewer.py
       - name: Build exe
         run: pyinstaller --noconfirm --onefile --windowed --name GakgungDojigae dojigae_gui.py
       - uses: actions/upload-artifact@v4

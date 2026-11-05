@@ -11,6 +11,8 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
 import dojigae_core as core
+import dojigae_3d as d3
+import dojigae_viewer as viewer
 
 APP_TITLE = "각궁도지개 제작도면 생성기"
 SETTINGS = os.path.join(os.path.expanduser("~"), ".gakgung_dojigae.json")
@@ -83,6 +85,8 @@ class App(tk.Tk):
 
         bfrm = ttk.Frame(self)
         bfrm.grid(row=3, column=0, sticky="ew", padx=8, pady=(4, 10))
+        self.want3d = tk.BooleanVar(value=True)
+        ttk.Checkbutton(ofrm, text="3D(STL·뷰어)도 생성", variable=self.want3d).pack(side="left", padx=10)
         self.btn = ttk.Button(bfrm, text="도면 생성", command=self._run)
         self.btn.pack(side="left")
         ttk.Button(bfrm, text="기본값", command=self._reset).pack(side="left", padx=6)
@@ -134,12 +138,19 @@ class App(tk.Tk):
             messagebox.showwarning(APP_TITLE, str(e))
             return
         out = self.outdir.get().strip() or "."
+        want3d = self.want3d.get()
         self.btn.state(["disabled"])
         self.status.set("생성 중…")
 
         def work():
             try:
                 files = core.generate(out, keys=keys, params=params, factors=factors)
+                if want3d:
+                    files += d3.export_stl(out, keys=keys)
+                    vf = os.path.join(out, f"dojigae_L{core.PARAM['L']:.0f}_3d_viewer.html")
+                    with open(vf, "w", encoding="utf-8") as fp:
+                        fp.write(viewer.build_html(keys))
+                    files.append(vf)
                 self.after(0, lambda: self._done(out, files))
             except Exception as e:  # noqa
                 self.after(0, lambda: self._fail(e))

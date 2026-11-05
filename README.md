@@ -5,6 +5,8 @@
 
 - **PDF**: A3, 정면도 1:1 — 배율 100%로 출력하면 그대로 형판으로 쓸 수 있습니다.
 - **DXF**: 1:1 — CAD, 레이저 커팅, CNC용
+- **STL**: 3D 모델(가죽 포함) — 3D 뷰어·3D 프린터용 (끈구멍·보어는 미표시)
+- **3D 뷰어(HTML)**: 브라우저로 열어 회전·확대해 볼 수 있음 (인터넷 연결 필요)
 
 ## 내려받기
 
@@ -42,4 +44,6 @@ py dojigae_core.py       # 기본값으로 output 폴더에 도면 생성
 
 - `dojigae_gui.py` — 입력 화면
 - `dojigae_core.py` — 형상 계산, PDF·DXF 생성
+- `dojigae_3d.py` — 단면 스윕 3D 메시, STL 저장
+- `dojigae_viewer.py` — three.js 3D 뷰어 HTML 생성
 - `.github/workflows/build-windows.yml` — main 브랜치에 올리면 exe를 자동 빌드하고, `v*` 태그를 달면 Release에 올림
