@@ -43,13 +43,15 @@ PARAM = dict(
     groove=2.0,     # 볼록면(접촉면) C자 홈 깊이(중앙)
     groove_rim=0.0, # 테두리 없음 — 모서리에서 바로 시작
     leather=2.0,    # 접촉면 가죽(스웨이드) 두께
-    hole_d=8.0,     # 끈구멍(오목면 쪽, 끈 나오는 쪽) 정공
-    cb_d=16.0, cb_depth=8.0,  # 가죽쪽 카운터보어(매듭 숨김)
+    hole_d=7.0,     # 끈구멍(오목면 쪽, 끈 나오는 쪽) 정공
+    cb_d=12.0, cb_depth=8.0,  # 가죽쪽 카운터보어(매듭 숨김)
     corner_r=3.0,
     lip_h=2.5,      # 끈 감기 턱 높이(오목면 쪽)
-    lip_len=26.0,   # 끝에서 턱까지(돋운 블록 길이)
+    lip_len=8.0,    # 끝에서 턱까지(돋운 블록 길이)
     lip_fillet=4.0, # 턱 안쪽 둥근 전이 길이
     fore=1.30,      # 사진 원근 보정계수(세로)
+    bend_x=167.0,   # 왼쪽 끝 → 꺾임점(오목면 최저점) 거리 mm
+    edge_r_ratio=0.45,  # 오목면 쪽(가죽 반대쪽) 모서리 R = T × 비율
 )
 GRADES = {
     "1": dict(name="중곡", f=0.75, code="DJG-1",
@@ -70,24 +72,43 @@ def base_curve():
     return uu, _V * PARAM["fore"]
 
 
+def _lower_hull(px, py):
+    """볼록면이 다시 꺾이지 않도록: 점열의 아래쪽 볼록 껍질"""
+    h = []
+    for p in zip(px, py):
+        while len(h) >= 2 and ((h[-1][0] - h[-2][0]) * (p[1] - h[-2][1])
+                               - (h[-1][1] - h[-2][1]) * (p[0] - h[-2][0])) <= 0:
+            h.pop()
+        h.append(p)
+    h = np.array(h)
+    return np.interp(px, h[:, 0], h[:, 1])
+
+
 def geometry(f):
     L = PARAM["L"]
-    u, v = base_curve()
+    uu, v = base_curve()
+    ub0 = uu[int(np.argmax(v))]                       # 기준 곡선의 꺾임 위치
+    ubn = float(np.clip(PARAM["bend_x"] / L, 0.15, 0.85))
     x = np.linspace(0, L, 1441)
-    yc = np.interp(x, u * L, -v * L * f)  # 오목면(위), 가운데가 아래로 처짐
     u = x / L
-    ub = u[np.argmin(yc)]                 # 꺾임 위치
+    src = np.where(u < ubn, u * ub0 / ubn, ub0 + (u - ubn) * (1 - ub0) / (1 - ubn))
+    yc = -np.interp(src, uu, v) * L * f               # 오목면(위), 가운데가 아래로 처짐
+    ub = ubn
     d = PARAM["d_end"] + (PARAM["d_bend"] - PARAM["d_end"]) * np.exp(-((u - ub) / 0.22) ** 2)
     dy = np.gradient(yc, x)
     nx, ny = dy / np.hypot(1, dy), -1 / np.hypot(1, dy)   # 아래쪽 법선
     xv, yv = x + d * nx, yc + d * ny     # 볼록면(아래, 활 접촉면)
+    o = np.argsort(xv); xv, yv = xv[o], yv[o]
+    yv = _lower_hull(xv, yv)             # 끝부분 역굴곡 제거(직선으로 이어짐)
+    dyv = np.gradient(yv, xv)
+    nvx, nvy = dyv / np.hypot(1, dyv), -1 / np.hypot(1, dyv)  # 볼록면 바깥(아래) 법선
     # 끈 감기 턱: 양끝 블록을 오목면 쪽으로 h만큼 돋움
     h, Lb, w = PARAM["lip_h"], PARAM["lip_len"], PARAM["lip_fillet"]
     def ramp(t):
         return np.where(t <= 0, 1.0, np.where(t >= w, 0.0, 0.5 * (1 + np.cos(np.pi * t / w))))
     b = np.maximum(ramp(x - Lb), ramp((L - x) - Lb))
     xc, ycr = x - h * b * nx, yc - h * b * ny
-    return dict(x=x, xc=xc, yc=ycr, yc0=yc, xv=xv, yv=yv, d=d, ub=ub, nx=nx, ny=ny)
+    return dict(x=x, xc=xc, yc=ycr, yc0=yc, xv=xv, yv=yv, d=d, ub=ub, nx=nx, ny=ny, nvx=nvx, nvy=nvy)
 
 
 def outline(g):
@@ -130,10 +151,31 @@ def hole_lines(g):
         nx, ny = g["nx"][k], g["ny"][k]
         tx, ty = -ny, nx
         C = np.array([g["xc"][k], g["yc"][k]])
-        V = np.array([g["xv"][k] + lt * nx, g["yv"][k] + lt * ny])
+        ts = np.linspace(0, 120, 2401)        # 구멍 축과 볼록면의 교점
+        px, py = C[0] + ts * nx, C[1] + ts * ny
+        j = int(np.argmax(py - np.interp(px, g["xv"], g["yv"]) <= 0))
+        V = np.array([px[j], py[j]])
         T_ = np.array([tx, ty])
         res.append((C, V, T_, np.array([nx, ny]), h))
     return res
+
+
+def crown_profile(u, T, R):
+    """오목면 쪽(가죽 반대쪽) 모서리 라운드: 꼭대기에서 아래로 내려간 양 (0 = 평면부)"""
+    R = min(R, T / 2)
+    dl = np.where(u < R, R - np.sqrt(np.maximum(R ** 2 - (R - u) ** 2, 0)), 0.0)
+    dr = np.where(u > T - R, R - np.sqrt(np.maximum(R ** 2 - (u - (T - R)) ** 2, 0)), 0.0)
+    return np.maximum(dl, dr)
+
+
+def section_outline(x0, ybot_prof_x, ybot_prof_y, T, ytop, R, S):
+    """단면 외곽: 아래(볼록면 C홈) → 오른쪽 → 라운드 꼭대기 → 왼쪽"""
+    uu = np.linspace(T, 0, 241)
+    cr = crown_profile(uu, T, R)
+    # 라운드가 옆면까지 내려가는 높이 R
+    xs = np.r_[ybot_prof_x, x0 + uu * S, x0]
+    ys = np.r_[ybot_prof_y, ytop - cr * S, ybot_prof_y[0]]
+    return xs, ys
 
 
 def groove_profile(u, T, gd):
@@ -173,11 +215,13 @@ def sheet(key, G, pdf):
     ax.plot(ox + np.r_[ol[:, 0], ol[0, 0]], oy + np.r_[ol[:, 1], ol[0, 1]], lw=1.2, color="k")
     # 접촉면 홈 표시선(숨은선)
     k = PARAM["groove"]; lt = PARAM["leather"]
-    xl, yl = g["xv"] + lt * g["nx"], g["yv"] + lt * g["ny"]
+    xl, yl = g["xv"] + lt * g["nvx"], g["yv"] + lt * g["nvy"]
     ax.fill(ox + np.r_[g["xv"], xl[::-1]], oy + np.r_[g["yv"], yl[::-1]], color="0.55", lw=0)
     ax.plot(ox + xl, oy + yl, lw=0.8, color="k")
+    Re = PARAM["T"] * PARAM["edge_r_ratio"]   # 모서리 라운드 접선(가는 실선)
+    ax.plot(ox + g["xc"] + Re * g["nx"], oy + g["yc"] + Re * g["ny"], lw=0.35, color="0.35")
     gd = PARAM["groove"]
-    ax.plot(ox + g["xv"] - gd * g["nx"], oy + g["yv"] - gd * g["ny"], lw=0.5, color="k", ls=(0, (4, 2)))
+    ax.plot(ox + g["xv"] - gd * g["nvx"], oy + g["yv"] - gd * g["nvy"], lw=0.5, color="k", ls=(0, (4, 2)))
     for (C, V, T_, N, h) in hole_lines(g):
         H = PARAM["cb_d"] / 2; dep = PARAM["cb_depth"]
         M = V - dep * N            # 카운터보어 바닥
@@ -209,7 +253,7 @@ def sheet(key, G, pdf):
     dim_h(ax, ox, ox + xb, oy + 6, f"{xb:.0f} (꺾임점)", fs=6)
     dim_v(ax, ox + xb + 4, oy, oy - sag, f"처짐 {sag:.1f}", fs=6)
     i0 = 0
-    dim_v(ax, ox - 6, oy + g["yc"][i0], oy + g["yv"][i0], f"{PARAM['d_end']:.0f}", side=-1)
+    dim_v(ax, ox - 6, oy + g["yc"][i0], oy + g["yv"][i0], f"{g['yc'][i0] - g['yv'][i0]:.1f}", side=-1)
     ib = int(np.argmin(g["yc"]))
     dim_v(ax, ox + xb - 4, oy + g["yc"][ib], oy + g["yv"][ib], f"{g['d'][ib]:.0f}", side=-1, fs=6)
     hx, hy = holes(g)[1]
@@ -229,8 +273,15 @@ def sheet(key, G, pdf):
     uu = np.linspace(0, T, 121)
     prof = groove_profile(uu, T, gd)
     X = sx + uu * S2; Yb = sy + prof * S2
-    ax.fill(np.r_[X, X[::-1][[0]], X[[0]]], np.r_[Yb, sy + db * S2, sy + db * S2], fill=False, hatch="////", lw=0)
-    ax.plot(np.r_[X, sx + T * S2, sx, sx], np.r_[Yb, sy + db * S2, sy + db * S2, sy], lw=1.2, color="k")
+    Re = T * PARAM["edge_r_ratio"]
+    PX, PY = section_outline(sx, X, Yb, T, sy + db * S2, Re, S2)
+    clip = matplotlib.patches.Polygon(np.c_[PX, PY], closed=True, fill=False, lw=0)
+    ax.add_patch(clip)
+    for k0 in np.arange(-T * S2 - 100, db * S2 + 100, 3.0):      # 해칭(45°)을 직접 그려 PDF 이음매 방지
+        ln, = ax.plot([sx + k0, sx + k0 + 200], [sy, sy + 200], lw=0.4, color="k")
+        ln.set_clip_path(clip)
+    ax.plot(PX, PY, lw=1.2, color="k")
+    ax.text(sx + T * S2 + 3, sy + db * S2 - Re * S2 * 0.3, f"← R{Re:.1f} (T×{PARAM['edge_r_ratio']:g})", fontsize=6, va="center")
     ax.fill(np.r_[X, X[::-1]], np.r_[Yb, (Yb - lt * S2)[::-1]], color="0.55", lw=0)
     ax.plot(X, Yb - lt * S2, lw=0.6, color="k")
     dim_h(ax, sx, sx + T * S2, sy + db * S2 + 4, f"T = {T:.0f}")
@@ -267,19 +318,22 @@ def sheet(key, G, pdf):
     top = qy + de * S2
     c0 = qx + T / 2 * S2
     # 목재 외곽(구멍 부분 제외)
-    ax.plot(np.r_[X, qx + T * S2, qx, qx], np.r_[Yb, top, top, qy], lw=1.1, color="k")
+    Re = T * PARAM["edge_r_ratio"]
+    PX, PY = section_outline(qx, X, Yb, T, top, Re, S2)
+    ax.plot(PX, PY, lw=1.1, color="k")
+    ytop_hole = top - float(crown_profile(np.array([T / 2 - hd / 2]), T, Re)[0]) * S2
     # 가죽 (구멍 위로도 연속 — 매듭을 덮음)
     ax.fill(np.r_[X, X[::-1]], np.r_[Yb, (Yb - lt * S2)[::-1]], color="0.55", lw=0)
     ax.plot(X, Yb - lt * S2, lw=0.6, color="k")
     # 카운터보어 + 정공 (흰색으로 비움)
     ycb = qy + gd * S2              # 홈 바닥(중앙) 기준
     ax.fill([c0 - cbd * S2 / 2, c0 + cbd * S2 / 2, c0 + cbd * S2 / 2, c0 - cbd * S2 / 2], [ycb, ycb, ycb + cbh * S2, ycb + cbh * S2], color="white", zorder=3)
-    ax.fill([c0 - hd * S2 / 2, c0 + hd * S2 / 2, c0 + hd * S2 / 2, c0 - hd * S2 / 2], [ycb + cbh * S2, ycb + cbh * S2, top, top], color="white", zorder=3)
+    ax.fill([c0 - hd * S2 / 2, c0 + hd * S2 / 2, c0 + hd * S2 / 2, c0 - hd * S2 / 2], [ycb + cbh * S2, ycb + cbh * S2, top + 1, top + 1], color="white", zorder=3)
     ywall = qy + np.interp(T / 2 - cbd / 2, uu, prof) * S2
     ax.fill([c0 - cbd * S2 / 2, c0 + cbd * S2 / 2, c0 + cbd * S2 / 2, c0 - cbd * S2 / 2], [ywall, ywall, ycb, ycb], color="white", zorder=2.5)
     ax.plot(X, Yb, lw=0.6, color="k", zorder=2.6)
-    ax.plot([c0 - cbd * S2 / 2, c0 - cbd * S2 / 2, c0 - hd * S2 / 2, c0 - hd * S2 / 2], [ywall, ycb + cbh * S2, ycb + cbh * S2, top], lw=1.1, color="k", zorder=4)
-    ax.plot([c0 + cbd * S2 / 2, c0 + cbd * S2 / 2, c0 + hd * S2 / 2, c0 + hd * S2 / 2], [ywall, ycb + cbh * S2, ycb + cbh * S2, top], lw=1.1, color="k", zorder=4)
+    ax.plot([c0 - cbd * S2 / 2, c0 - cbd * S2 / 2, c0 - hd * S2 / 2, c0 - hd * S2 / 2], [ywall, ycb + cbh * S2, ycb + cbh * S2, ytop_hole], lw=1.1, color="k", zorder=4)
+    ax.plot([c0 + cbd * S2 / 2, c0 + cbd * S2 / 2, c0 + hd * S2 / 2, c0 + hd * S2 / 2], [ywall, ycb + cbh * S2, ycb + cbh * S2, ytop_hole], lw=1.1, color="k", zorder=4)
     # 끈 + 매듭(개략)
     ax.plot([c0, c0], [top + 8, ycb + cbh * S2], lw=1.6, color="0.4", zorder=5)
     ax.add_patch(Circle((c0, ycb + cbh * S2 / 2), cbh * S2 / 2 - 1.5, fc="0.75", ec="0.3", lw=0.6, zorder=5))
@@ -309,7 +363,7 @@ def sheet(key, G, pdf):
     notes = [
         "주기",
         "1. 재질: 물푸레나무 / 참죽나무 / 느티나무 중 택1 — 충분히 건조된 것(함수율 12% 이하).",
-        "2. 결 방향은 긴 팔 방향. 꺾임부에 옹이·엇결 없을 것.",
+        f"2. 결은 긴 팔 방향. 오목면 쪽 모서리 R{PARAM['T'] * PARAM['edge_r_ratio']:.1f}(T×{PARAM['edge_r_ratio']:g}). 볼록면 끝부분은 역굴곡 없이 직선 연장.",
         f"3. 가공: 정면도 1:1 출력(A3, 배율 100%) → 형판 제작 → 판재(T{PARAM['T']:g})에 금긋기 → 띠톱 → 다듬기.",
         f"4. 볼록면(활 접촉면): 폭 전체 완만한 C자 홈(중앙 깊이 {PARAM['groove']:g}) 가공 후 스웨이드 가죽 t{PARAM['leather']:g}를 홈 따라 접착(끝까지).",
         f"5. 끈구멍: 오목면 Ø{PARAM['hole_d']:g} 관통 + 볼록면 카운터보어 Ø{PARAM['cb_d']:g}×{PARAM['cb_depth']:g}. 매듭을 보어 안에 넣고 가죽으로 덮음. 각인: 옆면 긴 팔.",
@@ -343,7 +397,7 @@ def to_dxf(key, g):
     ol = outline(g)
     msp.add_lwpolyline([tuple(p) for p in ol], close=True, dxfattribs={"layer": "OUTLINE"})
     k = PARAM["groove"]
-    msp.add_lwpolyline(list(zip(g["xv"] - k * g["nx"], g["yv"] - k * g["ny"])), dxfattribs={"layer": "HIDDEN"})
+    msp.add_lwpolyline(list(zip(g["xv"] - k * g["nvx"], g["yv"] - k * g["nvy"])), dxfattribs={"layer": "HIDDEN"})
     for (C, V, T_, N, h) in hole_lines(g):
         H = PARAM["cb_d"] / 2; M = V - PARAM["cb_depth"] * N
         for sg in (-1, 1):
