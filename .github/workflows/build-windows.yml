@@ -7,6 +7,11 @@ on:
   release:
     types: [published]
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "릴리스로 게시할 태그 (예: v1.0.0). 비우면 빌드만"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -34,8 +39,12 @@ jobs:
         with:
           name: GakgungDojigae-windows
           path: dist/GakgungDojigae.exe
-      - name: Release (tag push only)
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Release (tag push / release / manual tag)
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.release_tag != ''
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ inputs.release_tag || github.ref_name }}
+          name: ${{ inputs.release_tag && format('{0} — 각궁도지개 제작도면 생성기', inputs.release_tag) || '' }}
+          body_path: .github/release-notes.md
+          target_commitish: ${{ github.sha }}
           files: dist/GakgungDojigae.exe
