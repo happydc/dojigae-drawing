@@ -418,8 +418,8 @@ def to_dxf(key, g):
 OUTDIR = "."
 
 
-def generate(outdir=".", keys=None, params=None, factors=None):
-    """도면 생성. 반환: 생성된 파일 경로 목록"""
+def generate(outdir=".", keys=None, params=None, factors=None, dxf=True):
+    """도면 생성(PDF, dxf=True면 DXF도). 반환: 생성된 파일 경로 목록"""
     global OUTDIR
     OUTDIR = outdir
     os.makedirs(outdir, exist_ok=True)
@@ -434,7 +434,8 @@ def generate(outdir=".", keys=None, params=None, factors=None):
     with PdfPages(pdfn) as pdf:
         for k_ in keys:
             g = sheet(k_, GRADES[k_], pdf)
-            files.append(to_dxf(k_, g))
+            if dxf:
+                files.append(to_dxf(k_, g))
     files.insert(0, pdfn)
     return files
 

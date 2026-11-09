@@ -67,11 +67,13 @@ footer{color:var(--mut);font-size:12px;padding:0 20px 20px}
       <div class="grades" id="grades"></div>
     </div>
     <div class="card" id="tcard">
-      <h2>3D 출력</h2>
+      <h2>추가 출력 (PDF 도면은 항상 생성)</h2>
       <div class="row">
-        <label><input type="checkbox" id="want3d" checked> 3D 모델·3D 프린트용 STL·3D 뷰어도 생성</label>
+        <label><input type="checkbox" id="want_dxf"> DXF (CAD·레이저용)</label>
+        <label><input type="checkbox" id="want_view" checked> 3D 뷰어 (HTML)</label>
+        <label><input type="checkbox" id="want_stl"> STL (3D 모델·3D 프린트용)</label>
       </div>
-      <div class="row" style="margin-top:6px">
+      <div class="row" style="margin-top:6px" id="bedrow">
         <span id="bedlab">프린터 베드 최대 길이</span><input class="num" id="bed" inputmode="decimal" value="250"><span class="u">mm (초과 시 2분할 + 핀 구멍)</span>
       </div>
     </div>
@@ -108,7 +110,7 @@ const PYO = new URLSearchParams(location.search).get('pyo') || 'https://cdn.jsde
 const EZDXF = 'wheels/ezdxf-1.4.2-py3-none-any.whl';
 const PYFILES = ['dojigae_core.py','dojigae_3d.py','dojigae_viewer.py','dojigae_gui.py','dojigae_preview.py','web_api.py'];
 const ASSETS = ['assets/fonts/NanumGothic-Regular.ttf','assets/fonts/NanumGothic-Bold.ttf'];
-const STORE = 'dojigae_web_v1';
+const STORE = 'dojigae_web_v2', OLD_STORE = 'dojigae_web_v1';
 const VER = '__VER__';
 const HL = '#d62828', WOOD = '#ead1a8', WOOD_EDGE = '#8a6a3e', LEATHER = '#2e9e6a';
 const END_KEYS = new Set(['hole_d','cb_d','cb_depth','hole_off','lip_h','lip_len','lip_fillet','d_end']);
@@ -148,11 +150,18 @@ async function boot(){
   }
 }
 
-function load(){ try{ return JSON.parse(localStorage.getItem(STORE)) || null; }catch(e){ return null; } }
+function load(){
+  try{
+    const st = JSON.parse(localStorage.getItem(STORE));
+    if (st) return st;
+    const old = JSON.parse(localStorage.getItem(OLD_STORE));   // 이전 버전: 치수·배율만 이어받음
+    return old ? {vals: old.vals, fac: old.fac} : null;
+  }catch(e){ return null; }
+}
 function save(){
   const ch = {};
   for (const k of Object.keys(vals)) if (String(vals[k]) !== String(UI.defaults[k])) ch[k] = vals[k];
-  const st = {vals: ch, fac: {}, sel, want3d: $('want3d').checked, bed: $('bed').value};
+  const st = {vals: ch, fac: {}, sel, dxf: $('want_dxf').checked, view: $('want_view').checked, stl: $('want_stl').checked, bed: $('bed').value};
   for (const k of Object.keys(fac)) if (String(fac[k]) !== String(UI.grades[k].f)) st.fac[k] = fac[k];
   try{ localStorage.setItem(STORE, JSON.stringify(st)); }catch(e){}
 }
@@ -169,8 +178,8 @@ function build(){
   const st = load() || {};
   vals = {}; fac = {}; sel = {};
   for (const [k, , ] of UI.fields) vals[k] = (st.vals && k in st.vals) ? st.vals[k] : UI.defaults[k];
-  for (const [k, g] of Object.entries(UI.grades)){ fac[k] = (st.fac && k in st.fac) ? st.fac[k] : g.f; sel[k] = st.sel ? !!st.sel[k] : true; }
-  if (st.want3d !== undefined) $('want3d').checked = st.want3d;
+  for (const [k, g] of Object.entries(UI.grades)){ fac[k] = (st.fac && k in st.fac) ? st.fac[k] : g.f; sel[k] = st.sel ? !!st.sel[k] : (k === '2'); }
+  $('want_dxf').checked = !!st.dxf; $('want_stl').checked = !!st.stl; $('want_view').checked = st.view !== undefined ? !!st.view : true;
   if (st.bed) $('bed').value = st.bed;
   const fd = $('fields'); fd.innerHTML = '';
   for (const [k, lab, unit] of UI.fields){
@@ -190,7 +199,9 @@ function build(){
     w.append(l, inp); gd.appendChild(w);
   }
   bindHover($('gcard'), 'grade'); bindHover($('bed'), 'bed'); bindHover($('bedlab'), 'bed');
-  $('want3d').onchange = save; $('bed').oninput = save;
+  const bedState = () => { $('bed').disabled = !$('want_stl').checked; $('bedrow').style.opacity = $('want_stl').checked ? 1 : .5; };
+  for (const id of ['want_dxf','want_view','want_stl']) $(id).onchange = () => { bedState(); save(); };
+  $('bed').oninput = save; bedState();
   refresh();
 }
 
@@ -355,17 +366,18 @@ $('go').onclick = async () => {
   if (!api) return;
   const keys = Object.keys(sel).filter(k => sel[k]);
   const bed = Number($('bed').value);
-  if ($('want3d').checked && !(bed > 0)){ alert('프린터 베드 길이가 숫자가 아닙니다.'); return; }
+  const wDxf = $('want_dxf').checked, wStl = $('want_stl').checked, wView = $('want_view').checked;
+  if (wStl && !(bed > 0)){ alert('프린터 베드 길이가 숫자가 아닙니다.'); return; }
   $('busy').style.display = 'flex'; $('busymsg').textContent = '도면을 만드는 중… (10~40초)'; $('go').disabled = true;
   await new Promise(r => setTimeout(r, 50));
   try{
-    const r = JSON.parse(api.generate(JSON.stringify(vals), JSON.stringify(fac), JSON.stringify(keys), $('want3d').checked));
+    const r = JSON.parse(api.generate(JSON.stringify(vals), JSON.stringify(fac), JSON.stringify(keys), wDxf, wStl, wView));
     if (r.errors && r.errors.length){ alert('입력값을 확인하세요.\n\n' + r.errors.join('\n')); return; }
     urls.forEach(u => URL.revokeObjectURL(u)); urls = []; $('flist').innerHTML = '';
     const stl = [], bodies = {};
     if (r.jobs.length){
-      $('busymsg').textContent = '3D 프린트용 STL을 만드는 중…'; await new Promise(res => setTimeout(res, 30));
-      for (const job of r.jobs){ const o = makeStl(job, bed); bodies[job.key] = o.body; stl.push(...o); }
+      $('busymsg').textContent = '3D 모델을 만드는 중…'; await new Promise(res => setTimeout(res, 30));
+      for (const job of r.jobs){ const o = makeStl(job, bed); bodies[job.key] = o.body; if (r.stl) stl.push(...o); }
     }
     for (const path of r.files){
       const name = path.split('/').pop();
@@ -384,7 +396,7 @@ $('go').onclick = async () => {
     $('busy').style.display = 'none'; $('go').disabled = false;
   }
 };
-$('reset').onclick = () => { try{ localStorage.removeItem(STORE); }catch(e){} $('want3d').checked = true; $('bed').value = 250; build(); };
+$('reset').onclick = () => { try{ localStorage.removeItem(STORE); localStorage.removeItem(OLD_STORE); }catch(e){} $('bed').value = 250; build(); };
 boot();
 </script>
 </body>

@@ -60,6 +60,7 @@ class App(tk.Tk):
         self.fvars = {}
         self.gvars = {}
         self._build()
+        self._bed_state()
         self._load()
 
     def _build(self):
@@ -86,7 +87,7 @@ class App(tk.Tk):
         gfrm = ttk.LabelFrame(self, text="굴곡 등급 (표준 곡선 대비 처짐 배율)")
         gfrm.grid(row=1, column=0, sticky="ew", padx=8, pady=4)
         for i, (k, g) in enumerate(core.GRADES.items()):
-            b = tk.BooleanVar(value=True)
+            b = tk.BooleanVar(value=(k == "2"))   # 기본: 2형(표준)만
             ttk.Checkbutton(gfrm, text=f"{k}형 {g['name']}", variable=b).grid(row=0, column=i * 2, sticky="w", **pad)
             f = tk.StringVar(value=f"{g['f']:g}")
             ttk.Entry(gfrm, textvariable=f, width=6, justify="right").grid(row=0, column=i * 2 + 1, padx=(0, 16))
@@ -102,14 +103,22 @@ class App(tk.Tk):
 
         bfrm = ttk.Frame(self)
         bfrm.grid(row=4, column=0, sticky="ew", padx=8, pady=(4, 10))
-        self.want3d = tk.BooleanVar(value=True)
-        tfrm = ttk.LabelFrame(self, text="3D 출력")
+        self.want_dxf = tk.BooleanVar(value=False)
+        self.want_stl = tk.BooleanVar(value=False)
+        self.want_view = tk.BooleanVar(value=True)
+        tfrm = ttk.LabelFrame(self, text="추가 출력 (PDF 도면은 항상 생성)")
         tfrm.grid(row=3, column=0, sticky="ew", padx=8, pady=4)
-        ttk.Checkbutton(tfrm, text="3D 모델·3D 프린트용 STL·3D 뷰어도 생성", variable=self.want3d).pack(side="left", padx=6, pady=4)
-        ttk.Label(tfrm, text="프린터 베드 최대 길이").pack(side="left", padx=(16, 4))
+        r1 = ttk.Frame(tfrm); r1.pack(fill="x", padx=6, pady=(4, 0))
+        ttk.Checkbutton(r1, text="DXF (CAD·레이저용)", variable=self.want_dxf).pack(side="left")
+        ttk.Checkbutton(r1, text="3D 뷰어 (HTML)", variable=self.want_view).pack(side="left", padx=12)
+        ttk.Checkbutton(r1, text="STL (3D 모델·3D 프린트용)", variable=self.want_stl,
+                        command=self._bed_state).pack(side="left")
+        tfrm = ttk.Frame(tfrm); tfrm.pack(fill="x", padx=6, pady=4)
+        ttk.Label(tfrm, text="프린터 베드 최대 길이").pack(side="left", padx=(0, 4))
         self.bed = tk.StringVar(value="250")
         bed_en = ttk.Entry(tfrm, textvariable=self.bed, width=6, justify="right")
         bed_en.pack(side="left")
+        self.bed_en = bed_en
         self._hover("bed", bed_en)
         ttk.Label(tfrm, text="mm (초과 시 2분할 + 핀 구멍)").pack(side="left", padx=4)
         self.btn = ttk.Button(bfrm, text="도면 생성", command=self._run)
@@ -117,6 +126,9 @@ class App(tk.Tk):
         ttk.Button(bfrm, text="기본값", command=self._reset).pack(side="left", padx=6)
         self.status = tk.StringVar(value="치수를 확인하고 [도면 생성]을 누르세요.")
         ttk.Label(bfrm, textvariable=self.status, foreground="#555").pack(side="left", padx=10)
+
+    def _bed_state(self):
+        self.bed_en.state(["!disabled"] if self.want_stl.get() else ["disabled"])
 
     def _hover(self, key, *widgets):
         for w in widgets:
@@ -149,6 +161,10 @@ class App(tk.Tk):
             v.set(f"{self.defaults[k]:g}")
         for k, v in self.fvars.items():
             v.set(f"{self.def_f[k]:g}")
+        for k, b in self.gvars.items():
+            b.set(k == "2")
+        self.want_dxf.set(False); self.want_stl.set(False); self.want_view.set(True)
+        self._bed_state()
         self._refresh_preview()
 
     def _collect(self):
@@ -185,20 +201,23 @@ class App(tk.Tk):
             messagebox.showwarning(APP_TITLE, str(e))
             return
         out = self.outdir.get().strip() or "."
-        want3d = self.want3d.get()
+        want_dxf, want_stl, want_view = self.want_dxf.get(), self.want_stl.get(), self.want_view.get()
         try:
             bed = float(self.bed.get())
         except ValueError:
-            messagebox.showwarning(APP_TITLE, "프린터 베드 길이가 숫자가 아닙니다.")
-            return
+            if want_stl:
+                messagebox.showwarning(APP_TITLE, "프린터 베드 길이가 숫자가 아닙니다.")
+                return
+            bed = 250.0
         self.btn.state(["disabled"])
         self.status.set("생성 중…")
 
         def work():
             try:
-                files = core.generate(out, keys=keys, params=params, factors=factors)
-                if want3d:
+                files = core.generate(out, keys=keys, params=params, factors=factors, dxf=want_dxf)
+                if want_stl:
                     files += d3.export_stl(out, keys=keys, bed=bed)
+                if want_view:
                     vf = os.path.join(out, f"dojigae_L{core.PARAM['L']:.0f}_3d_viewer.html")
                     with open(vf, "w", encoding="utf-8") as fp:
                         fp.write(viewer.build_html(keys))

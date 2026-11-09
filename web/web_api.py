@@ -111,8 +111,8 @@ def preview(params_json):
     ), ensure_ascii=False)
 
 
-def generate(params_json, factors_json, keys_json, want3d):
-    """PDF·DXF(·3D 뷰어)를 /out 에 만들고, 3D 프린트용 STL 작업 목록(메시+절삭 원기둥)을 돌려줌"""
+def generate(params_json, factors_json, keys_json, want_dxf, want_stl, want_viewer):
+    """PDF(·DXF·3D 뷰어)를 /out 에 만들고, 3D 프린트용 STL 작업 목록(메시+절삭 원기둥)을 돌려줌"""
     params, factors, keys = json.loads(params_json), json.loads(factors_json), json.loads(keys_json)
     errs = _errors(params, factors, keys)
     if errs:
@@ -121,13 +121,14 @@ def generate(params_json, factors_json, keys_json, want3d):
     if os.path.isdir(OUT):
         shutil.rmtree(OUT)
     os.makedirs(OUT)
-    files = core.generate(OUT, keys=keys)
+    files = core.generate(OUT, keys=keys, dxf=bool(want_dxf))
     jobs = []
-    if want3d:
+    if want_viewer:
         vf = os.path.join(OUT, f"dojigae_L{core.PARAM['L']:.0f}_3d_viewer.html")
         with open(vf, "w", encoding="utf-8") as fp:
             fp.write(viewer.build_html(keys))
         files.append(vf)
+    if want_viewer or want_stl:            # 뷰어의 끈구멍·STL 모두 브라우저 불리언 결과를 씀
         for k in keys:
             G = core.GRADES[k]
             m = d3.build_mesh(G["f"])
@@ -141,4 +142,4 @@ def generate(params_json, factors_json, keys_json, want3d):
                 cuts=[cyl(c) for c in d3.hole_cuts(g)],
                 xs=xs, pins=[cyl(c) for c in pins],
             ))
-    return json.dumps(dict(files=files, jobs=jobs, errors=[]), ensure_ascii=False)
+    return json.dumps(dict(files=files, jobs=jobs, stl=bool(want_stl), errors=[]), ensure_ascii=False)
