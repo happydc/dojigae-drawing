@@ -73,11 +73,12 @@ export function stlBinary(parts) {
 }
 
 export function makeStl(job, bed) {
-  // 반환: [{name, data(Uint8Array)}]
+  // 반환: [{name, data(Uint8Array)}], out.body = 구멍 뚫린 본체 메시(3D 뷰어용)
   let body = toManifold(job.body.v, job.body.f);
   for (const c of job.cuts) body = body.subtract(cylAlong(c));
   const B = meshArrays(body);
   const out = [];
+  out.body = B;
   out.push({ name: job.base + '_model.stl', data: stlBinary([B, { v: job.leather.v, f: job.leather.f }]) });
   out.push({ name: job.base + '_print.stl', data: stlBinary([{ v: layFlat(B.v), f: B.f }]) });
   if (extentX(B.v) > bed) {
@@ -90,4 +91,24 @@ export function makeStl(job, bed) {
     }
   }
   return out;
+}
+
+function b64(u8) {
+  let s = ''; const CH = 0x8000;
+  for (let i = 0; i < u8.length; i += CH) s += String.fromCharCode.apply(null, u8.subarray(i, i + CH));
+  return btoa(s);
+}
+
+export function patchViewer(html, bodies) {
+  // 3D 뷰어 HTML의 본체 메시를 구멍 뚫린 메시로 교체. bodies: {등급키: {v, f}}
+  const m = html.match(/const DATA=(\{.*?\}), INFO=/s);
+  if (!m) return html;
+  const D = JSON.parse(m[1]);
+  for (const [k, B] of Object.entries(bodies)) {
+    if (!D[k]) continue;
+    const v = B.v instanceof Float32Array ? B.v : new Float32Array(B.v);
+    const f = B.f instanceof Uint32Array ? B.f : new Uint32Array(B.f);
+    D[k].body = { v: b64(new Uint8Array(v.buffer, v.byteOffset, v.byteLength)), f: b64(new Uint8Array(f.buffer, f.byteOffset, f.byteLength)) };
+  }
+  return html.replace(m[0], 'const DATA=' + JSON.stringify(D) + ', INFO=');
 }

@@ -135,7 +135,7 @@ def generate(params_json, factors_json, keys_json, want3d):
             xs, pins = d3.split_spec(g)
             cyl = lambda c: [_r(c[0], 4), _r(c[1], 6), float(c[2]), float(c[3])]
             jobs.append(dict(
-                base=f"dojigae_L{core.PARAM['L']:.0f}_{k}_{G['code']}",
+                key=k, base=f"dojigae_L{core.PARAM['L']:.0f}_{k}_{G['code']}",
                 body=dict(v=_r(m["body"][0].ravel(), 4), f=m["body"][1].ravel().tolist()),
                 leather=dict(v=_r(m["leather"][0].ravel(), 4), f=m["leather"][1].ravel().tolist()),
                 cuts=[cyl(c) for c in d3.hole_cuts(g)],

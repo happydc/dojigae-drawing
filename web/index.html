@@ -103,7 +103,7 @@ footer{color:var(--mut);font-size:12px;padding:0 20px 20px}
 <div id="busy"><div class="box" id="busymsg">도면을 만드는 중…</div></div>
 
 <script type="module">
-import { initManifold, makeStl } from './stl3d.js?v=__VER__';
+import { initManifold, makeStl, patchViewer } from './stl3d.js?v=__VER__';
 const PYO = new URLSearchParams(location.search).get('pyo') || 'https://cdn.jsdelivr.net/pyodide/v0.27.8/full/';
 const EZDXF = 'wheels/ezdxf-1.4.2-py3-none-any.whl';
 const PYFILES = ['dojigae_core.py','dojigae_3d.py','dojigae_viewer.py','dojigae_gui.py','dojigae_preview.py','web_api.py'];
@@ -362,11 +362,19 @@ $('go').onclick = async () => {
     const r = JSON.parse(api.generate(JSON.stringify(vals), JSON.stringify(fac), JSON.stringify(keys), $('want3d').checked));
     if (r.errors && r.errors.length){ alert('입력값을 확인하세요.\n\n' + r.errors.join('\n')); return; }
     urls.forEach(u => URL.revokeObjectURL(u)); urls = []; $('flist').innerHTML = '';
-    for (const path of r.files) addFile(path.split('/').pop(), py.FS.readFile(path));
+    const stl = [], bodies = {};
     if (r.jobs.length){
       $('busymsg').textContent = '3D 프린트용 STL을 만드는 중…'; await new Promise(res => setTimeout(res, 30));
-      for (const job of r.jobs) for (const o of makeStl(job, bed)) addFile(o.name, o.data);
+      for (const job of r.jobs){ const o = makeStl(job, bed); bodies[job.key] = o.body; stl.push(...o); }
     }
+    for (const path of r.files){
+      const name = path.split('/').pop();
+      let data = py.FS.readFile(path);
+      if (name.endsWith('_3d_viewer.html') && Object.keys(bodies).length)   // 3D 뷰어에도 끈구멍 반영
+        data = new TextEncoder().encode(patchViewer(new TextDecoder().decode(data), bodies));
+      addFile(name, data);
+    }
+    for (const o of stl) addFile(o.name, o.data);
     $('files').style.display = 'block';
     $('status').textContent = `완료: ${$('flist').children.length}개 파일`;
     $('files').scrollIntoView({behavior: 'smooth', block: 'nearest'});
