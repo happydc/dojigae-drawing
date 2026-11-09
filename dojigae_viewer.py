@@ -61,6 +61,7 @@ HTML = r"""<!DOCTYPE html>
  <div class="seg" id="views">
   <button data-v="iso" class="on">입체</button><button data-v="front">정면</button><button data-v="top">위</button><button data-v="end">끝</button>
  </div>
+ <label class="tg"><input type="checkbox" id="lea" checked> 가죽 붙이기</label>
  <label class="tg"><input type="checkbox" id="pair"> 1벌(2개)</label>
  <label class="tg"><input type="checkbox" id="spin"> 자동 회전</label>
 </header>
@@ -98,13 +99,16 @@ function addUV(g){const p=g.attributes.position,uv=new Float32Array(p.count*2);
  g.setAttribute('uv',new THREE.BufferAttribute(uv,2))}
 
 const root=new THREE.Group(); scene.add(root);
-let cur=null;
+let cur=null, leas=[], leaOff=0;          // 가죽 메시들, 현재 떨어진 거리(mm)
+const LEA_GAP=22;                           // 뗐을 때 볼록면에서 떨어지는 거리
 function show(k){
  root.clear();
  const d=DATA[k], gb=geom(d.body), gl=geom(d.leather); addUV(gb);
- const one=new THREE.Group(); one.add(new THREE.Mesh(gb,wood)); one.add(new THREE.Mesh(gl,suede));
+ const one=new THREE.Group(); one.add(new THREE.Mesh(gb,wood));
+ const lm=new THREE.Mesh(gl,suede); lm.userData.lea=true; one.add(lm);
  one.position.set(-INFO.L/2,40,0); root.add(one);
  if(document.getElementById('pair').checked){const two=one.clone();two.position.z=INFO.T+12;one.position.z=-(INFO.T+12)/2;two.position.z=(INFO.T+12)/2;root.add(two)}
+ leas=[]; root.traverse(o=>{if(o.userData&&o.userData.lea)leas.push(o)}); setLea();
  cur=k;
  document.querySelectorAll('#grades button').forEach(b=>b.classList.toggle('on',b.dataset.k===k));
  document.getElementById('info').innerHTML=`<b>${d.name}</b><br>
@@ -116,12 +120,16 @@ function show(k){
 const gs=document.getElementById('grades');
 Object.keys(DATA).forEach(k=>{const b=document.createElement('button');b.textContent=DATA[k].name;b.dataset.k=k;b.onclick=()=>show(k);gs.appendChild(b)});
 document.getElementById('pair').onchange=()=>show(cur);
+document.getElementById('lea').onchange=()=>{};
+// 가죽을 볼록면에서 아래로 떼어 냄(부드럽게 이동) — 홈과 끈구멍 보어가 보임
+function setLea(){for(const m of leas){m.position.y=-leaOff;m.material=suede}}
+suede.transparent=true;
 
 // 궤도 카메라
 let th=-0.75, ph=0.3, dist=700, tgt=new THREE.Vector3(0,0,0);
 const views={iso:[-0.75,0.3],front:[0,0.0],top:[0,1.5],end:[-1.5707,0.1]};
 function place(){ph=Math.max(-1.55,Math.min(1.55,ph));
- cam.position.set(tgt.x+dist*Math.cos(ph)*Math.sin(th),tgt.y+dist*Math.sin(ph),tgt.z+dist*Math.cos(ph)*Math.cos(th));cam.lookAt(tgt)}
+ cam.position.set(tgt.x+dist*Math.cos(ph)*Math.sin(th),tgt.y+dist*Math.sin(ph),tgt.z+dist*Math.cos(ph)*Math.cos(th));cam.lookAt(tgt);grid.visible=ph>-0.05}
 document.querySelectorAll('#views button').forEach(b=>b.onclick=()=>{[th,ph]=views[b.dataset.v];tgt.set(0,0,0);
  document.querySelectorAll('#views button').forEach(x=>x.classList.toggle('on',x===b));place()});
 const pts=new Map(); let last=null, pan=false;
@@ -139,7 +147,10 @@ cv.addEventListener('wheel',e=>{e.preventDefault();dist*=Math.exp(e.deltaY*0.001
 
 function resize(){const w=box.clientWidth,h=box.clientHeight;renderer.setSize(w,h,false);cam.aspect=w/h;cam.updateProjectionMatrix()}
 addEventListener('resize',resize);
-function loop(){if(document.getElementById('spin').checked){th+=0.004;place()}renderer.render(scene,cam);requestAnimationFrame(loop)}
+function loop(){if(document.getElementById('spin').checked){th+=0.004;place()}
+ const tgtOff=document.getElementById('lea').checked?0:LEA_GAP;
+ if(Math.abs(tgtOff-leaOff)>0.05){leaOff+=(tgtOff-leaOff)*0.12;setLea();suede.opacity=1-0.25*(leaOff/LEA_GAP)}
+ renderer.render(scene,cam);requestAnimationFrame(loop)}
 show(Object.keys(DATA)[Math.min(1,Object.keys(DATA).length-1)]);resize();place();loop();
 </script></body></html>
 """
