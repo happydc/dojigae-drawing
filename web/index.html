@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>각궁도지개 제작도면 생성기</title>
+<link rel="icon" href="assets/icon.png">
+<style>
+:root{--bg:#f4f1ea;--card:#fffdf8;--ink:#2b2620;--mut:#7a7166;--line:#ddd3c2;--acc:#1f6b4c;--acc2:#16362a;--bad:#c62828;--ok:#2a7a2a}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 "Malgun Gothic","Apple SD Gothic Neo","Noto Sans KR",sans-serif}
+header{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 20px 6px}
+header img{width:34px;height:34px;border-radius:7px}
+header h1{font-size:20px;margin:0}
+header .ver{color:var(--mut);font-size:12px;margin-left:auto}
+main{display:grid;grid-template-columns:minmax(380px,470px) 1fr;gap:16px;padding:8px 20px 24px;align-items:start}
+@media (max-width:980px){main{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:12px}
+.card h2{font-size:13px;margin:0 0 8px;color:var(--acc2)}
+.fields{display:grid;grid-template-columns:1fr 84px 26px;gap:5px 8px;align-items:center}
+.fields label{text-align:right;color:#3d3328}
+input.num{width:100%;padding:4px 6px;border:1px solid #cdbfa8;border-radius:5px;text-align:right;font:inherit}
+input.num:focus{outline:2px solid #9fd1b8;border-color:var(--acc)}
+input.num.err{border-color:var(--bad);background:#fff4f4}
+.u{color:var(--mut);font-size:12px}
+.grades{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center}
+.grades label{display:flex;gap:5px;align-items:center;font-weight:700}
+.grades input.num{width:64px}
+.row{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center}
+.row input.num{width:72px}
+.actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:4px}
+button.go{background:var(--acc);color:#fff;border:none;border-radius:8px;padding:10px 18px;font:700 15px inherit;cursor:pointer}
+button.go:disabled{opacity:.5;cursor:default}
+button.sub{background:#fff;border:1px solid #c9bba4;border-radius:8px;padding:9px 14px;font:inherit;cursor:pointer}
+#status{color:var(--mut);margin-top:8px;min-height:20px}
+#err{color:var(--bad);margin-top:6px;font-size:13px}
+#cv{width:100%;height:auto;display:block;border:1px solid var(--line);border-radius:8px;background:#fbf8f2}
+#desc{min-height:22px;color:#7a2020;margin:8px 2px 0}
+#files{display:none}
+#files ul{list-style:none;padding:0;margin:6px 0 0}
+#files li{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #eee5d6}
+#files a{color:var(--acc2);font-weight:700;text-decoration:none;word-break:break-all}
+#files .k{color:var(--mut);font-size:12px}
+#load{position:fixed;inset:0;background:#f4f1eaee;display:flex;align-items:center;justify-content:center;z-index:9}
+#load .box{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:24px 28px;max-width:440px;text-align:center}
+#load .bar{height:8px;background:#e3ddcf;border-radius:4px;margin:14px 0 8px;overflow:hidden}
+#load .bar i{display:block;height:100%;width:5%;background:var(--acc);transition:width .4s}
+#busy{display:none;position:fixed;inset:0;background:#0003;z-index:8;align-items:center;justify-content:center}
+#busy .box{background:var(--card);border-radius:10px;padding:18px 24px;border:1px solid var(--line)}
+footer{color:var(--mut);font-size:12px;padding:0 20px 20px}
+</style>
+</head>
+<body>
+<header>
+  <img src="assets/icon.png" alt="">
+  <h1>각궁도지개 제작도면 생성기</h1>
+  <span class="ver">웹 버전 · 설치 없이 브라우저에서 실행</span>
+</header>
+<main>
+  <section>
+    <div class="card">
+      <h2>치수</h2>
+      <div class="fields" id="fields"></div>
+    </div>
+    <div class="card" id="gcard">
+      <h2>굴곡 등급 (표준 곡선 대비 처짐 배율)</h2>
+      <div class="grades" id="grades"></div>
+    </div>
+    <div class="card" id="tcard">
+      <h2>3D 출력</h2>
+      <div class="row">
+        <label><input type="checkbox" id="want3d" checked> 3D 모델·3D 프린트용 STL·3D 뷰어도 생성</label>
+      </div>
+      <div class="row" style="margin-top:6px">
+        <span id="bedlab">프린터 베드 최대 길이</span><input class="num" id="bed" inputmode="decimal" value="250"><span class="u">mm (초과 시 2분할 + 핀 구멍)</span>
+      </div>
+    </div>
+    <div class="actions">
+      <button class="go" id="go" disabled>도면 생성</button>
+      <button class="sub" id="reset">기본값</button>
+    </div>
+    <div id="err"></div>
+    <div id="status"></div>
+    <div class="card" id="files" style="margin-top:12px">
+      <h2>만든 파일</h2>
+      <div class="k">파일 이름을 누르면 내려받습니다. PDF는 A3, 배율 100%(실제 크기)로 인쇄하세요.</div>
+      <ul id="flist"></ul>
+    </div>
+  </section>
+  <section class="card">
+    <h2>미리보기 — 항목에 마우스를 올리거나 누르면 해당 치수가 빨간색으로 표시됩니다</h2>
+    <canvas id="cv" width="1120" height="730"></canvas>
+    <div id="desc"></div>
+  </section>
+</main>
+<footer>도면 계산은 브라우저 안에서만 이루어지며 입력값은 이 브라우저에만 저장됩니다. · 글꼴: 나눔고딕(OFL) · 3D 불리언: manifold-3d(Apache-2.0) · 실행: Pyodide</footer>
+
+<div id="load"><div class="box">
+  <b style="font-size:16px">프로그램을 불러오는 중입니다</b>
+  <div class="bar"><i id="lbar"></i></div>
+  <div id="lmsg" style="color:#7a7166">처음 한 번은 20~30초 걸립니다. 다음부터는 빨라집니다.</div>
+</div></div>
+<div id="busy"><div class="box" id="busymsg">도면을 만드는 중…</div></div>
+
+<script type="module">
+import { initManifold, makeStl } from './stl3d.js?v=__VER__';
+const PYO = new URLSearchParams(location.search).get('pyo') || 'https://cdn.jsdelivr.net/pyodide/v0.27.8/full/';
+const EZDXF = 'wheels/ezdxf-1.4.2-py3-none-any.whl';
+const PYFILES = ['dojigae_core.py','dojigae_3d.py','dojigae_viewer.py','dojigae_gui.py','dojigae_preview.py','web_api.py'];
+const ASSETS = ['assets/fonts/NanumGothic-Regular.ttf','assets/fonts/NanumGothic-Bold.ttf'];
+const STORE = 'dojigae_web_v1';
+const VER = '__VER__';
+const HL = '#d62828', WOOD = '#ead1a8', WOOD_EDGE = '#8a6a3e', LEATHER = '#2e9e6a';
+const END_KEYS = new Set(['hole_d','cb_d','cb_depth','hole_off','lip_h','lip_len','lip_fillet','d_end']);
+let py, api, UI, vals = {}, fac = {}, sel = {}, hover = null, last = null, timer = null;
+const $ = id => document.getElementById(id);
+function step(p, m){ $('lbar').style.width = p + '%'; if (m) $('lmsg').textContent = m; }
+
+async function boot(){
+  try{
+    step(5, 'Pyodide 불러오는 중…');
+    await new Promise((res, rej) => { const s = document.createElement('script'); s.src = PYO + 'pyodide.js'; s.onload = res;
+      s.onerror = () => rej(new Error('Pyodide를 불러오지 못했습니다. 인터넷 연결을 확인하세요.')); document.head.appendChild(s); });
+    py = await loadPyodide({indexURL: PYO});
+    step(30, '계산 라이브러리(numpy·matplotlib) 불러오는 중…');
+    await py.loadPackage(['numpy','matplotlib','micropip']);
+    step(55, 'DXF 라이브러리 설치 중…');
+    await py.pyimport('micropip').install(new URL(EZDXF, location.href).href);
+    step(65, '3D 라이브러리 불러오는 중…');
+    await initManifold(new URL('assets/vendor/manifold.js', location.href).href);
+    step(72, '도면 프로그램 파일 불러오는 중…');
+    py.FS.mkdirTree('/app/assets/fonts');
+    await Promise.all(PYFILES.concat(ASSETS).map(async f => {
+      const r = await fetch(f + '?v=' + VER); if (!r.ok) throw new Error(f + ' 를 불러오지 못했습니다');
+      py.FS.writeFile('/app/' + f, new Uint8Array(await r.arrayBuffer()));
+    }));
+    step(85, '도면 프로그램 시작 중… (글꼴 준비)');
+    await py.runPythonAsync("import sys, os\nos.chdir('/app')\nsys.path.insert(0, '/app')\nimport web_api");
+    api = py.pyimport('web_api');
+    UI = JSON.parse(api.ui());
+    step(100, '준비 완료');
+    build();
+    $('load').style.display = 'none';
+    $('go').disabled = false;
+  }catch(e){
+    $('lmsg').innerHTML = '<span style="color:#c62828">' + (e.message || e) + '</span><br>새로고침(F5)해 보세요.';
+    console.error(e);
+  }
+}
+
+function load(){ try{ return JSON.parse(localStorage.getItem(STORE)) || null; }catch(e){ return null; } }
+function save(){
+  const ch = {};
+  for (const k of Object.keys(vals)) if (String(vals[k]) !== String(UI.defaults[k])) ch[k] = vals[k];
+  const st = {vals: ch, fac: {}, sel, want3d: $('want3d').checked, bed: $('bed').value};
+  for (const k of Object.keys(fac)) if (String(fac[k]) !== String(UI.grades[k].f)) st.fac[k] = fac[k];
+  try{ localStorage.setItem(STORE, JSON.stringify(st)); }catch(e){}
+}
+const fmt = v => String(+(+v).toFixed(4));
+
+function numInput(val, on){
+  const inp = document.createElement('input'); inp.className = 'num'; inp.inputMode = 'decimal'; inp.value = fmt(val);
+  inp.oninput = () => { const v = inp.value.trim(), n = Number(v); const bad = v === '' || !isFinite(n);
+    inp.classList.toggle('err', bad); if (!bad) on(n); };
+  return inp;
+}
+
+function build(){
+  const st = load() || {};
+  vals = {}; fac = {}; sel = {};
+  for (const [k, , ] of UI.fields) vals[k] = (st.vals && k in st.vals) ? st.vals[k] : UI.defaults[k];
+  for (const [k, g] of Object.entries(UI.grades)){ fac[k] = (st.fac && k in st.fac) ? st.fac[k] : g.f; sel[k] = st.sel ? !!st.sel[k] : true; }
+  if (st.want3d !== undefined) $('want3d').checked = st.want3d;
+  if (st.bed) $('bed').value = st.bed;
+  const fd = $('fields'); fd.innerHTML = '';
+  for (const [k, lab, unit] of UI.fields){
+    const l = document.createElement('label'); l.textContent = lab; l.htmlFor = 'f_' + k;
+    const inp = numInput(vals[k], n => { vals[k] = n; changed(); }); inp.id = 'f_' + k;
+    const u = document.createElement('span'); u.className = 'u'; u.textContent = unit;
+    bindHover(l, k); bindHover(inp, k);
+    fd.append(l, inp, u);
+  }
+  const gd = $('grades'); gd.innerHTML = '';
+  for (const [k, g] of Object.entries(UI.grades)){
+    const l = document.createElement('label');
+    l.innerHTML = `<input type="checkbox"> ${k}형 ${g.name}`;
+    const cb = l.querySelector('input'); cb.checked = sel[k]; cb.onchange = () => { sel[k] = cb.checked; save(); };
+    const inp = numInput(fac[k], n => { fac[k] = n; save(); });
+    const w = document.createElement('span'); w.style.display = 'flex'; w.style.gap = '6px'; w.style.alignItems = 'center';
+    w.append(l, inp); gd.appendChild(w);
+  }
+  bindHover($('gcard'), 'grade'); bindHover($('bed'), 'bed'); bindHover($('bedlab'), 'bed');
+  $('want3d').onchange = save; $('bed').oninput = save;
+  refresh();
+}
+
+function bindHover(el, key){
+  el.addEventListener('mouseenter', () => show(key));
+  el.addEventListener('focusin', () => show(key));
+  el.addEventListener('mouseleave', () => show(null));
+  el.addEventListener('click', () => show(key));
+}
+function show(k){ hover = k; $('desc').textContent = k ? (UI.descr[k] || '') : '항목에 마우스를 올리면 해당 치수를 빨간색으로 표시합니다.'; draw(); }
+
+function changed(){ save(); clearTimeout(timer); timer = setTimeout(refresh, 150); }
+function refresh(){
+  if (!api) return;
+  try { last = JSON.parse(api.preview(JSON.stringify(vals))); } catch(e){ last = {errors: [String(e)]}; }
+  $('err').innerHTML = (last.errors || []).map(e => '✕ ' + e).join('<br>');
+  if (!last.errors.length) draw(); else drawErr();
+  if (!hover) show(null);
+}
+
+// ---------------------------------------------------------------- 미리보기
+const cv = $('cv'), g = cv.getContext('2d');
+function drawErr(){ g.setTransform(1,0,0,1,0,0); g.fillStyle = '#fbf8f2'; g.fillRect(0,0,cv.width,cv.height);
+  g.fillStyle = '#c62828'; g.font = '26px "Malgun Gothic",sans-serif'; g.fillText('입력값을 확인하세요', 40, 70); }
+function poly(pts, fill, stroke, lw){ g.beginPath(); pts.forEach(([x,y], i) => i ? g.lineTo(x,y) : g.moveTo(x,y)); g.closePath();
+  if (fill){ g.fillStyle = fill; g.fill(); } if (stroke){ g.strokeStyle = stroke; g.lineWidth = lw || 2; g.stroke(); } }
+function pline(pts, c, w, dash){ g.beginPath(); pts.forEach(([x,y], i) => i ? g.lineTo(x,y) : g.moveTo(x,y));
+  g.setLineDash(dash || []); g.strokeStyle = c; g.lineWidth = w; g.lineJoin = 'round'; g.stroke(); g.setLineDash([]); }
+function text(t, x, y, c, sz, bold, align){ g.fillStyle = c; g.font = (bold ? 'bold ' : '') + (sz || 18) + 'px "Malgun Gothic",sans-serif';
+  g.textAlign = align || 'center'; g.fillText(t, x, y); g.textAlign = 'left'; }
+function arrowHead(x, y, dx, dy, c){ const n = Math.hypot(dx, dy) || 1; dx /= n; dy /= n;
+  g.beginPath(); g.moveTo(x, y); g.lineTo(x - dx*14 - dy*6, y - dy*14 + dx*6); g.lineTo(x - dx*14 + dy*6, y - dy*14 - dx*6); g.fillStyle = c; g.fill(); }
+function dimH(x1, x2, y, t){ pline([[x1,y],[x2,y]], HL, 3); arrowHead(x1, y, -1, 0, HL); arrowHead(x2, y, 1, 0, HL); text(t, (x1+x2)/2, y - 10, HL, 19, true); }
+function dimV(x, y1, y2, t, side){ side = side || 1; pline([[x,y1],[x,y2]], HL, 3); arrowHead(x, y1, 0, Math.sign(y1-y2)||-1, HL); arrowHead(x, y2, 0, Math.sign(y2-y1)||1, HL);
+  text(t, x + side*10, (y1+y2)/2 + 6, HL, 19, true, side > 0 ? 'left' : 'right'); }
+function ring(x, y, r){ g.beginPath(); g.arc(x, y, r, 0, 7); g.strokeStyle = HL; g.lineWidth = 3; g.stroke(); }
+
+// 단면 형상 (dojigae_core.groove_profile / crown_profile 과 같은 식)
+function groove(u, T, gd){ const R = ((T/2)**2 + gd**2) / (2*gd); return Math.sqrt(Math.max(R*R - (u - T/2)**2, 0)) - (R - gd); }
+function crown(u, T, R){ R = Math.min(R, T/2);
+  const dl = u < R ? R - Math.sqrt(Math.max(R*R - (R-u)**2, 0)) : 0;
+  const dr = u > T - R ? R - Math.sqrt(Math.max(R*R - (u-(T-R))**2, 0)) : 0; return Math.max(dl, dr); }
+
+function draw(){
+  if (!last || !last.x) return;
+  const G = last, P = G.P, L = P.L, n = G.x.length;
+  g.setTransform(1,0,0,1,0,0); g.clearRect(0,0,cv.width,cv.height); g.fillStyle = '#fbf8f2'; g.fillRect(0,0,cv.width,cv.height);
+  // 정면도
+  const ymin = Math.min(...G.yv), ymax = Math.max(...G.yc, 0);
+  const s = Math.min(760 / L, 300 / (ymax - ymin + 10));
+  const ox = 36, oy = 120 + ymax * s;
+  const fx = x => ox + x * s, fy = y => oy - y * s;
+  const top = [], bot = [];
+  for (let i = 0; i < n; i++){ top.push([fx(G.xc[i]), fy(G.yc[i])]); bot.push([fx(G.xv[i]), fy(G.yv[i])]); }
+  poly(top.concat(bot.slice().reverse()), WOOD, WOOD_EDGE, 2.5);
+  const lt = P.leather, lea = [];
+  for (let i = 0; i < n; i++) lea.push([fx(G.xv[i] + lt*G.nvx[i]), fy(G.yv[i] + lt*G.nvy[i])]);
+  pline(lea, LEATHER, Math.max(4, lt * s));
+  for (const [C, V] of G.holes) pline([[fx(C[0]), fy(C[1])], [fx(V[0]), fy(V[1])]], '#9a8a70', 1.5, [5,4]);
+  pline([[fx(-5), fy(0)], [fx(L+5), fy(0)]], '#b9ad98', 1.5, [10,6]);
+  text('정면도', ox, 34, '#6b6150', 18, true, 'left');
+  // 단면
+  const T = P.T, R = T * P.edge_r_ratio, gdp = P.groove, db = G.dmax;
+  const ss = Math.min(5.2, 250 / Math.max(db, 1), 190 / Math.max(T, 1));
+  const qx = 880, qy = 80 + db * ss + 36;
+  const sx = u => qx + u * ss, sy = v => qy - v * ss;
+  const sec = [];
+  for (let i = 0; i <= 60; i++){ const u = T * i / 60; sec.push([sx(u), sy(groove(u, T, gdp))]); }
+  for (let i = 60; i >= 0; i--){ const u = T * i / 60; sec.push([sx(u), sy(db - crown(u, T, R))]); }
+  poly(sec, WOOD, WOOD_EDGE, 2.5);
+  const sl = []; for (let i = 0; i <= 60; i++){ const u = T*i/60; sl.push([sx(u), sy(groove(u, T, gdp) - lt)]); }
+  pline(sl, LEATHER, Math.max(4, lt * ss));
+  text('단면(꺾임부)', qx, 34, '#6b6150', 18, true, 'left');
+
+  if (!hover) return;
+  const topY = fy(ymax) - 26, key = hover, ib = G.ib;
+  const hl = (xs, ys, w) => pline(xs.map((x, i) => [x, ys[i]]), HL, w || 5);
+  const conc = (from, to) => { const a = [], b = []; for (let i = 0; i < n; i++) if (G.x[i] >= from && G.x[i] <= to){ a.push(fx(G.xc[i])); b.push(fy(G.yc[i])); } hl(a, b); };
+  if (key === 'L') dimH(fx(0), fx(L), topY, 'L = ' + fmt(P.L));
+  else if (key === 'bend_x'){ const xb = G.ub * L; pline([[fx(xb), topY], [fx(xb), fy(ib.yv)]], HL, 2, [8,4]); dimH(fx(0), fx(xb), topY, fmt(P.bend_x)); }
+  else if (key === 'd_end'){ dimV(fx(0) - 12, fy(G.end.yc0), fy(G.end.yv0), fmt(P.d_end), -1); dimV(fx(L) + 12, fy(G.end.yc1), fy(G.end.yv1), ''); }
+  else if (key === 'd_bend'){ dimV(fx(ib.xc), fy(ib.yc), fy(ib.yv), fmt(P.d_bend)); dimV(sx(T) + 24, sy(0), sy(db), fmt(P.d_bend)); }
+  else if (key === 'fore' || key === 'grade'){ dimV(fx(ib.xc) + 16, fy(0), fy(ib.yc0), '처짐 ' + (-ib.yc0).toFixed(1)); conc(-1, L + 1); }
+  else if (key === 'leather'){ pline(lea, HL, 6); pline(sl, HL, 6); }
+  else if (key === 'groove'){ const p = []; for (let i = 0; i <= 60; i++){ const u = T*i/60; p.push([sx(u), sy(groove(u, T, gdp))]); }
+    pline(p, HL, 6); dimV(sx(T/2), sy(0), sy(gdp) - 2, fmt(gdp)); }
+  else if (key === 'T') dimH(sx(0), sx(T), sy(db) - 28, 'T = ' + fmt(T));
+  else if (key === 'edge_r_ratio'){
+    for (const side of [0, 1]){ const p = []; for (let i = 0; i <= 40; i++){ const u = side ? T - R + R*i/40 : R*i/40; p.push([sx(u), sy(db - crown(u, T, R))]); } pline(p, HL, 7); }
+    text('R' + R.toFixed(1), sx(T/2), sy(db) - 26, HL, 19, true);
+  }
+  else if (['hole_d','cb_d','cb_depth'].includes(key)){
+    for (const [C, V] of G.holes){ if (key === 'hole_d') ring(fx(C[0]), fy(C[1]), 15); else ring(fx(V[0]), fy(V[1]), 17); }
+    text({hole_d: 'Ø' + fmt(P.hole_d) + ' (오목면 쪽)', cb_d: 'Ø' + fmt(P.cb_d) + ' (가죽 쪽)', cb_depth: '깊이 ' + fmt(P.cb_depth) + ' (가죽 쪽)'}[key], fx(L/2), topY, HL, 19, true);
+  }
+  else if (key === 'hole_off'){ const C = G.holes[0][0], V = G.holes[0][1]; dimH(fx(0), fx(C[0]), topY, fmt(P.hole_off)); pline([[fx(C[0]), topY], [fx(C[0]), fy(V[1])]], HL, 2, [8,4]); }
+  else if (['lip_h','lip_len','lip_fillet'].includes(key)){
+    const lb = P.lip_len, w = P.lip_fillet; conc(-1, lb + w); conc(L - lb - w, L + 1);
+    if (key === 'lip_len') dimH(fx(0), fx(lb), topY, fmt(lb));
+    else if (key === 'lip_fillet') dimH(fx(lb), fx(lb + w), topY, fmt(w));
+    else text('턱 h' + fmt(P.lip_h) + ' (양 끝)', fx(lb + 60), topY, HL, 19, true);
+  }
+  else if (key === 'bed'){ const xb = G.ub * L; pline([[fx(xb), topY], [fx(xb), fy(ib.yv) + 12]], HL, 4, [12,6]); text('2분할 위치(꺾임점)', fx(xb), topY - 12, HL, 19, true); }
+  if (END_KEYS.has(key)) endZoom(key);
+}
+
+function endZoom(key){
+  // 왼쪽 끝 확대 — 작은 부위(턱·구멍) 표시용
+  const G = last, P = G.P, n = G.x.length, X = 42;
+  const idx = [], idv = [];
+  for (let i = 0; i < n; i++){ if (G.x[i] <= X) idx.push(i); if (G.xv[i] <= X) idv.push(i); }
+  const ytop = Math.max(...idx.map(i => G.yc[i])), ybot = Math.min(...idv.map(i => G.yv[i]));
+  const z = Math.min(6.4, 176 / Math.max(ytop - ybot, 1));
+  const zx = 80, zy = 470;
+  const mx = x => zx + x * z, my = y => zy + (ytop - y) * z;
+  g.setLineDash([4,4]); g.strokeStyle = '#cfc6b6'; g.lineWidth = 1.5; g.strokeRect(zx - 20, zy - 32, X*z + 40, (ytop - ybot)*z + 56); g.setLineDash([]);
+  text('왼쪽 끝 확대', zx - 12, zy - 44, '#6b6150', 16, true, 'left');
+  const pts = idx.map(i => [mx(G.xc[i]), my(G.yc[i])]).concat(idv.slice().reverse().map(i => [mx(G.xv[i]), my(G.yv[i])]));
+  poly(pts, WOOD, WOOD_EDGE, 2.5);
+  const lt = P.leather;
+  pline(idv.map(i => [mx(G.xv[i] + lt*G.nvx[i]), my(G.yv[i] + lt*G.nvy[i])]), LEATHER, Math.max(4, lt*z));
+  const [C, V, T_, N, h] = G.holes[0];
+  const H = P.cb_d / 2, dd = P.groove + P.cb_depth;
+  const M = [V[0] - dd*N[0], V[1] - dd*N[1]];
+  const add = (a, b, k) => [a[0] + k*b[0], a[1] + k*b[1]];
+  const seg = (a, b, c, w, dash) => pline([[mx(a[0]), my(a[1])], [mx(b[0]), my(b[1])]], c, w, dash);
+  const hc = ['hole_d','hole_off'].includes(key), bc = ['cb_d','cb_depth'].includes(key);
+  for (const sg of [-1, 1]){
+    seg(add(C, T_, sg*h), add(M, T_, sg*h), hc ? HL : '#8a7a60', hc ? 4 : 1.5, hc ? null : [6,4]);
+    seg(add(M, T_, sg*H), add(V, T_, sg*H), bc ? HL : '#8a7a60', bc ? 4 : 1.5, bc ? null : [6,4]);
+  }
+  seg(add(M, T_, -H), add(M, T_, H), bc ? HL : '#8a7a60', bc ? 4 : 1.5, bc ? null : [6,4]);
+  if (key === 'hole_d') text('Ø' + fmt(P.hole_d), mx(C[0]) + 28, my(C[1]) - 12, HL, 19, true, 'left');
+  else if (key === 'cb_d') text('Ø' + fmt(P.cb_d), mx(V[0]) + H*z + 12, my(V[1]) - 10, HL, 19, true, 'left');
+  else if (key === 'cb_depth') text('깊이 ' + fmt(P.cb_depth), mx(M[0]) + H*z + 12, (my(M[1]) + my(V[1]))/2, HL, 19, true, 'left');
+  else if (key === 'hole_off') dimH(mx(0), mx(C[0]), zy - 12, fmt(P.hole_off));
+  else if (['lip_h','lip_len','lip_fillet'].includes(key)){
+    const lb = P.lip_len, w = P.lip_fillet;
+    pline(idx.filter(i => G.x[i] <= lb + w).map(i => [mx(G.xc[i]), my(G.yc[i])]), HL, 6);
+    if (key === 'lip_len') dimH(mx(0), mx(lb), zy - 12, fmt(lb));
+    else if (key === 'lip_fillet') dimH(mx(lb), mx(lb + w), zy - 12, fmt(w));
+    else text('h' + fmt(P.lip_h), mx(lb + w) + 14, zy - 8, HL, 19, true, 'left');
+  }
+  else if (key === 'd_end') dimV(mx(0) - 8, my(G.end.yc0), my(G.end.yv0), fmt(P.d_end), -1);
+}
+
+// ---------------------------------------------------------------- 생성·내려받기
+const KIND = [['_drawings.pdf','제작도면 PDF (A3, 정면도 1:1)'],['.dxf','DXF (1:1)'],['_3d_viewer.html','3D 뷰어 (브라우저)'],
+              ['_model.stl','3D 모델 STL (목재+가죽)'],['_print.stl','3D 프린트용 STL (통짜)'],['_print_A.stl','3D 프린트용 STL (2분할 A, 짧은 팔)'],['_print_B.stl','3D 프린트용 STL (2분할 B, 긴 팔)']];
+const MIME = {pdf:'application/pdf', dxf:'application/dxf', html:'text/html', stl:'model/stl'};
+let urls = [];
+function addFile(name, data){
+  const ext = name.split('.').pop();
+  const url = URL.createObjectURL(new Blob([data], {type: MIME[ext] || 'application/octet-stream'})); urls.push(url);
+  const kind = (KIND.find(([suf]) => name.endsWith(suf)) || ['', ''])[1];
+  const li = document.createElement('li');
+  li.innerHTML = `<span><a href="${url}" download="${name}">${name}</a><br><span class="k">${kind} · ${(data.length/1024).toFixed(0)} KB</span></span>`;
+  if (ext === 'html' || ext === 'pdf'){ const o = document.createElement('button'); o.className = 'sub'; o.textContent = '열기'; o.onclick = () => window.open(url, '_blank'); li.appendChild(o); }
+  $('flist').appendChild(li);
+}
+$('go').onclick = async () => {
+  if (!api) return;
+  const keys = Object.keys(sel).filter(k => sel[k]);
+  const bed = Number($('bed').value);
+  if ($('want3d').checked && !(bed > 0)){ alert('프린터 베드 길이가 숫자가 아닙니다.'); return; }
+  $('busy').style.display = 'flex'; $('busymsg').textContent = '도면을 만드는 중… (10~40초)'; $('go').disabled = true;
+  await new Promise(r => setTimeout(r, 50));
+  try{
+    const r = JSON.parse(api.generate(JSON.stringify(vals), JSON.stringify(fac), JSON.stringify(keys), $('want3d').checked));
+    if (r.errors && r.errors.length){ alert('입력값을 확인하세요.\n\n' + r.errors.join('\n')); return; }
+    urls.forEach(u => URL.revokeObjectURL(u)); urls = []; $('flist').innerHTML = '';
+    for (const path of r.files) addFile(path.split('/').pop(), py.FS.readFile(path));
+    if (r.jobs.length){
+      $('busymsg').textContent = '3D 프린트용 STL을 만드는 중…'; await new Promise(res => setTimeout(res, 30));
+      for (const job of r.jobs) for (const o of makeStl(job, bed)) addFile(o.name, o.data);
+    }
+    $('files').style.display = 'block';
+    $('status').textContent = `완료: ${$('flist').children.length}개 파일`;
+    $('files').scrollIntoView({behavior: 'smooth', block: 'nearest'});
+  }catch(e){
+    alert('도면 생성 중 오류가 났습니다.\n\n' + e); console.error(e);
+  }finally{
+    $('busy').style.display = 'none'; $('go').disabled = false;
+  }
+};
+$('reset').onclick = () => { try{ localStorage.removeItem(STORE); }catch(e){} $('want3d').checked = true; $('bed').value = 250; build(); };
+boot();
+</script>
+</body>
+</html>

@@ -21,7 +21,9 @@ def _setup_font():
         if cand in names:
             plt.rcParams["font.family"] = cand
             return cand
-    for p in (r"C:\Windows\Fonts\malgun.ttf", "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"):
+    here = os.path.dirname(os.path.abspath(__file__))
+    bundled = os.path.join(getattr(__import__("sys"), "_MEIPASS", here), "assets", "fonts", "NanumGothic-Regular.ttf")
+    for p in (r"C:\Windows\Fonts\malgun.ttf", bundled, "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"):
         if os.path.exists(p):
             fm.fontManager.addfont(p)
             plt.rcParams["font.family"] = fm.FontProperties(fname=p).get_name()

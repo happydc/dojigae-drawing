@@ -9,6 +9,10 @@
 - **STL (3D 프린트용 `_print`)**: 목재 본체만, 판재면을 바닥에 눕힌 자세. 베드보다 길면 꺾임점에서 2분할한 `_print_A/B`와 Ø5 맞춤 핀 구멍(깊이 12)도 함께 출력
 - **3D 뷰어(HTML)**: 브라우저로 열어 회전·확대해 볼 수 있음 (인터넷 연결 필요)
 
+## 웹 버전 (설치 없이 실행)
+
+https://happydc.github.io/dojigae-drawing/ — 브라우저에서 바로 실행합니다. 윈도우·맥·휴대폰 모두 됩니다. 처음 한 번은 20~30초 걸립니다.
+
 ## 내려받기
 
 [Releases](../../releases)에서 `GakgungDojigae.exe`를 받아 실행하면 됩니다. 설치는 필요 없습니다.
@@ -48,4 +52,6 @@ py dojigae_core.py       # 기본값으로 output 폴더에 도면 생성
 - `dojigae_core.py` — 형상 계산, PDF·DXF 생성
 - `dojigae_3d.py` — 단면 스윕 3D 메시, 구멍 불리언(manifold3d), STL 저장
 - `dojigae_viewer.py` — three.js 3D 뷰어 HTML 생성
+- `web/` — 웹 버전(Pyodide). 3D 프린트용 구멍·2분할은 브라우저에서 manifold-3d로 처리
+- `.github/workflows/pages.yml` — main에 올리면 웹 버전을 GitHub Pages에 배포
 - `.github/workflows/build-windows.yml` — main 브랜치에 올리면 exe를 자동 빌드하고, `v*` 태그를 달면 Release에 올림

@@ -114,24 +114,40 @@ def _cyl_along(p0, axis, length, d, seg=48):
     return mf.Manifold.cylinder(length, d / 2, d / 2, seg).transform(M)
 
 
+def hole_cuts(g):
+    """끈구멍 절삭용 원기둥 목록: (시작점 xyz, 축 단위벡터, 길이, 지름)"""
+    P = core.PARAM
+    cuts = []
+    for (C, V, T_, N, h) in core.hole_lines(g):
+        n3 = np.array([N[0], N[1], 0.0])
+        top = np.array([C[0], C[1], 0.0]) - n3 * 10
+        bot = np.array([V[0], V[1], 0.0])
+        cb_top = bot - n3 * (P["groove"] + P["cb_depth"])
+        cuts.append((top, n3, float(np.linalg.norm(cb_top - top) + 0.5), P["hole_d"]))
+        cuts.append((cb_top, n3, float(np.linalg.norm(bot - cb_top) + 5), P["cb_d"]))
+    return cuts
+
+
+def split_spec(g):
+    """2분할 위치 x와 맞춤 핀 구멍 원기둥 목록"""
+    xs = g["ub"] * core.PARAM["L"]
+    yc = float(np.interp(xs, g["xc"], g["yc"]))
+    yv = float(np.interp(xs, g["xv"], g["yv"]))
+    dep = yc - yv
+    pins = [(np.array([xs - PIN_DEPTH, yv + dep * r, 0.0]), np.array([1.0, 0.0, 0.0]), 2 * PIN_DEPTH, PIN_D)
+            for r in (0.30, 0.65)]
+    return float(xs), pins
+
+
 def body_with_holes(f):
     """반환: (body Manifold, leather (V,F), geometry)"""
     m = build_mesh(f)
     g = core.geometry(f)
     if mf is None:
         return None, m, g
-    P = core.PARAM
     body = _to_mf(*m["body"])
-    cut = []
-    for (C, V, T_, N, h) in core.hole_lines(g):
-        n3 = np.array([N[0], N[1], 0.0])                      # 아래(볼록면) 방향
-        top = np.array([C[0], C[1], 0.0]) - n3 * 10            # 오목면 위에서 시작
-        bot = np.array([V[0], V[1], 0.0])
-        cb_top = bot - n3 * (P["groove"] + P["cb_depth"])      # 보어 바닥(홈 중앙 기준 깊이)
-        cut.append(_cyl_along(top, n3, np.linalg.norm(cb_top - top) + 0.5, P["hole_d"]))
-        cut.append(_cyl_along(cb_top, n3, np.linalg.norm(bot - cb_top) + 5, P["cb_d"]))
-    for c in cut:
-        body = body - c
+    for (p0, ax, ln, d) in hole_cuts(g):
+        body = body - _cyl_along(p0, ax, ln, d)
     return body, m, g
 
 
@@ -172,17 +188,10 @@ def export_stl(outdir=".", keys=None, factors=None, params=None, bed=250.0):
 
 def _split_print(outdir, k, body, g):
     """꺾임점에서 2분할 + 양쪽에 맞춤 핀 구멍"""
-    xs = g["ub"] * core.PARAM["L"]
-    yc = float(np.interp(xs, g["xc"], g["yc"]))
-    yv = float(np.interp(xs, g["xv"], g["yv"]))
-    dep = yc - yv
-    pins = []
-    for r in (0.30, 0.65):
-        p = np.array([xs - PIN_DEPTH, yv + dep * r, 0.0])
-        pins.append(_cyl_along(p, [1, 0, 0], 2 * PIN_DEPTH, PIN_D, 32))
+    xs, pins = split_spec(g)
     b = body
-    for p in pins:
-        b = b - p
+    for (p0, ax, ln, d) in pins:
+        b = b - _cyl_along(p0, ax, ln, d, 32)
     left, right = b.split_by_plane([1.0, 0.0, 0.0], xs)    # 법선 쪽(오른쪽)이 첫 번째
     out = []
     for tag, part in (("print_A", right), ("print_B", left)):

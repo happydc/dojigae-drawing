@@ -16,7 +16,7 @@ def _pack(V, F):
 
 
 def build_html(keys=None):
-    d3.N_ST = 121
+    old_nst, d3.N_ST = d3.N_ST, 121
     data = {}
     for k in keys or list(core.GRADES):
         G = core.GRADES[k]
@@ -24,6 +24,7 @@ def build_html(keys=None):
         bVF = d3._from_mf(body) if body is not None else m["body"]
         data[k] = dict(name=f"{k}형 {G['name']}", body=_pack(*bVF), leather=_pack(*m["leather"]),
                        sag=round(float(-g["yc0"].min()), 1))
+    d3.N_ST = old_nst
     P = core.PARAM
     info = dict(L=P["L"], T=P["T"], bend=P["bend_x"], R=round(P["T"] * P["edge_r_ratio"], 1),
                 groove=P["groove"], leather=P["leather"], lip=P["lip_h"], lipx=P["lip_len"],
