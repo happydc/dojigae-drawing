@@ -36,6 +36,8 @@ FIELDS = [
     ("lip_len", "끝→턱 위치", "mm"),
     ("lip_fillet", "턱 둥근 전이 길이", "mm"),
     ("edge_r_ratio", "오목면 모서리 R (T×)", "배"),
+    ("recurve_l", "볼록면 끝 되굽힘(왼쪽)", "%"),
+    ("recurve_r", "볼록면 끝 되굽힘(오른쪽)", "%"),
 ]
 
 
@@ -72,7 +74,7 @@ class App(tk.Tk):
         self.preview = Preview(pfrm)
         self.preview.pack(padx=6, pady=6)
         for i, (k, lab, unit) in enumerate(FIELDS):
-            r, c = i % 8, (i // 8) * 3
+            r, c = i % 9, (i // 9) * 3
             la = ttk.Label(frm, text=lab)
             la.grid(row=r, column=c, sticky="e", **pad)
             v = tk.StringVar(value=f"{core.PARAM[k]:g}")
@@ -188,6 +190,9 @@ class App(tk.Tk):
             raise ValueError("매듭 보어 지름은 끈구멍 지름보다 커야 합니다.")
         if not (0.15 * params["L"] <= params["bend_x"] <= 0.85 * params["L"]):
             raise ValueError("꺾임점은 전체 길이의 15~85% 범위여야 합니다.")
+        for k in ("recurve_l", "recurve_r"):
+            if params[k] > 100:
+                raise ValueError("되굽힘은 0~100% 범위여야 합니다.")
         if params["edge_r_ratio"] > 0.5:
             raise ValueError("모서리 R 비율은 0.5 이하여야 합니다.")
         if params["groove"] <= 0:

@@ -66,6 +66,8 @@ def _errors(params, factors=None, keys=None):
         return e
     if not (0.15 * p["L"] <= p["bend_x"] <= 0.85 * p["L"]):
         e.append("꺾임점은 전체 길이의 15~85% 범위여야 합니다.")
+    if p["recurve_l"] > 100 or p["recurve_r"] > 100:
+        e.append("되굽힘은 0~100% 범위여야 합니다.")
     if p["edge_r_ratio"] > 0.5:
         e.append("모서리 R 비율은 0.5 이하여야 합니다.")
     if p["groove"] <= 0:
@@ -104,7 +106,7 @@ def preview(params_json):
     return json.dumps(dict(
         x=_r(g["x"][s]), xc=_r(g["xc"][s]), yc=_r(g["yc"][s]), yc0=_r(g["yc0"][s]),
         xv=_r(g["xv"][s]), yv=_r(g["yv"][s]), nvx=_r(g["nvx"][s], 4), nvy=_r(g["nvy"][s], 4),
-        ub=float(g["ub"]), dmax=float(g["d"].max()), ib=dict(xc=float(g["xc"][ib]), yc=float(g["yc"][ib]),
+        ub=float(g["ub"]), dmax=float(g["d"].max()), rb=[float(g["rb_xl"]), float(g["rb_xr"])], ib=dict(xc=float(g["xc"][ib]), yc=float(g["yc"][ib]),
         yc0=float(g["yc0"][ib]), yv=float(g["yv"][ib])),
         end=dict(yc0=float(g["yc"][0]), yv0=float(g["yv"][0]), yc1=float(g["yc"][-1]), yv1=float(g["yv"][-1])),
         holes=holes, P={k: float(v) for k, v in core.PARAM.items()}, errors=[],

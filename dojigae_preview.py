@@ -27,6 +27,8 @@ DESCR = {
     "lip_h": "끈 감기 턱 높이 — 양 끝 오목면을 돋운 높이(감은 끈 미끄럼 방지)",
     "lip_len": "끝 → 턱 위치 — 끝에서 턱(돋운 부분)이 끝나는 곳까지",
     "lip_fillet": "턱 둥근 전이 길이 — 턱에서 몸통으로 둥글게 내려가는 구간",
+    "recurve_l": "볼록면 끝 되굽힘(왼쪽) — 0%는 끝까지 직선, 100%는 원래 곡선대로 끝에서 다시 휨",
+    "recurve_r": "볼록면 끝 되굽힘(오른쪽) — 0%는 끝까지 직선, 100%는 원래 곡선대로 끝에서 다시 휨",
     "edge_r_ratio": "오목면 모서리 R — 가죽 반대쪽 모서리 반경 = 너비 T × 비율",
     "grade": "굴곡 등급 배율 — 표준(2형) 처짐 대비 배율. 1형 중곡 / 3형 심곡",
     "bed": "프린터 베드 최대 길이 — 이보다 길면 꺾임점에서 2분할 STL도 만듦",
@@ -222,6 +224,14 @@ class Preview(tk.Canvas):
             b = core.groove_profile(u, T, P["groove"])
             self.create_line([c for uu, vv in zip(u, b) for c in (self._sx(uu), self._sy(vv))], fill=HL, width=3, tags="hl")
             self._dim_v(self._sx(T / 2), self._sy(0), self._sy(P["groove"]), f"{P['groove']:g}")
+        elif key in ("recurve_l", "recurve_r"):
+            left = key == "recurve_l"
+            m = (g["xv"] <= g["rb_xl"]) if left else (g["xv"] >= g["rb_xr"])
+            self.create_line([c for x, y in zip(g["xv"][m], g["yv"][m]) for c in (fx(x), fy(y))],
+                             fill=HL, width=5, tags="hl")
+            xm = g["rb_xl"] / 2 if left else (g["rb_xr"] + L) / 2
+            self.create_text(fx(xm), fy(np.interp(xm, g["xv"], g["yv"])) + 16,
+                             text=f"되굽힘 {P[key]:g}%", fill=HL, font=("Malgun Gothic", 9, "bold"), tags="hl")
         elif key == "T":
             self._dim_h(self._sx(0), self._sx(T), self._sy(db) - 14, f"T = {T:g}")
         elif key == "edge_r_ratio":

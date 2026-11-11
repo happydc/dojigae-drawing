@@ -54,6 +54,8 @@ PARAM = dict(
     fore=1.30,      # 곡선 보정계수(처짐 전체 배율)
     bend_x=167.0,   # 왼쪽 끝 → 꺾임점(오목면 최저점) 거리 mm
     edge_r_ratio=0.45,  # 오목면 쪽(가죽 반대쪽) 모서리 R = T × 비율
+    recurve_l=0.0,      # 볼록면 왼쪽 끝 되굽힘 % (0 = 되굽힘 없이 직선 연장, 100 = 원래 곡선대로 다시 휨)
+    recurve_r=0.0,      # 볼록면 오른쪽 끝 되굽힘 %
 )
 GRADES = {
     "1": dict(name="중곡", f=0.75, code="DJG-1",
@@ -101,7 +103,16 @@ def geometry(f):
     nx, ny = dy / np.hypot(1, dy), -1 / np.hypot(1, dy)   # 아래쪽 법선
     xv, yv = x + d * nx, yc + d * ny     # 볼록면(아래, 활 접촉면)
     o = np.argsort(xv); xv, yv = xv[o], yv[o]
-    yv = _lower_hull(xv, yv)             # 끝부분 역굴곡 제거(직선으로 이어짐)
+    yh = _lower_hull(xv, yv)             # 끝부분 역굴곡 제거(직선으로 이어짐)
+    # 되굽힘: 직선(0%) ↔ 원래 곡선(100%)을 왼쪽·오른쪽 끝 따로 섞음
+    xb = ubn * L
+    rl = np.clip(PARAM.get("recurve_l", 0.0), 0, 100) / 100
+    rr = np.clip(PARAM.get("recurve_r", 0.0), 0, 100) / 100
+    diff = yv - yh                       # >= 0, 되굽힘 구간에서만 0보다 큼
+    yv = yh + np.where(xv < xb, rl, rr) * diff
+    on = diff > 0.05
+    rb_xl = float(xv[on & (xv < xb)].max()) if np.any(on & (xv < xb)) else 0.0
+    rb_xr = float(xv[on & (xv > xb)].min()) if np.any(on & (xv > xb)) else L
     dyv = np.gradient(yv, xv)
     nvx, nvy = dyv / np.hypot(1, dyv), -1 / np.hypot(1, dyv)  # 볼록면 바깥(아래) 법선
     # 끈 감기 턱: 양끝 블록을 오목면 쪽으로 h만큼 돋움
@@ -110,7 +121,8 @@ def geometry(f):
         return np.where(t <= 0, 1.0, np.where(t >= w, 0.0, 0.5 * (1 + np.cos(np.pi * t / w))))
     b = np.maximum(ramp(x - Lb), ramp((L - x) - Lb))
     xc, ycr = x - h * b * nx, yc - h * b * ny
-    return dict(x=x, xc=xc, yc=ycr, yc0=yc, xv=xv, yv=yv, d=d, ub=ub, nx=nx, ny=ny, nvx=nvx, nvy=nvy)
+    return dict(x=x, xc=xc, yc=ycr, yc0=yc, xv=xv, yv=yv, d=d, ub=ub, nx=nx, ny=ny, nvx=nvx, nvy=nvy,
+                rb_xl=rb_xl, rb_xr=rb_xr)
 
 
 def outline(g):
@@ -365,7 +377,7 @@ def sheet(key, G, pdf):
     notes = [
         "주기",
         "1. 재질: 물푸레나무 / 참죽나무 / 느티나무 중 택1 — 충분히 건조된 것(함수율 12% 이하).",
-        f"2. 결은 긴 팔 방향. 오목면 쪽 모서리 R{PARAM['T'] * PARAM['edge_r_ratio']:.1f}(T×{PARAM['edge_r_ratio']:g}). 볼록면 끝부분은 역굴곡 없이 직선 연장.",
+        f"2. 결은 긴 팔 방향. 오목면 쪽 모서리 R{PARAM['T'] * PARAM['edge_r_ratio']:.1f}(T×{PARAM['edge_r_ratio']:g}). 볼록면 끝 되굽힘 왼쪽 {PARAM['recurve_l']:g}% · 오른쪽 {PARAM['recurve_r']:g}%.",
         f"3. 가공: 정면도 1:1 출력(A3, 배율 100%) → 형판 제작 → 판재(T{PARAM['T']:g})에 금긋기 → 띠톱 → 다듬기.",
         f"4. 볼록면(활 접촉면): 폭 전체 완만한 C자 홈(중앙 깊이 {PARAM['groove']:g}) 가공 후 스웨이드 가죽 t{PARAM['leather']:g}를 홈 따라 접착(끝까지).",
         f"5. 끈구멍: 오목면 Ø{PARAM['hole_d']:g} 관통 + 볼록면 카운터보어 Ø{PARAM['cb_d']:g}×{PARAM['cb_depth']:g}. 매듭을 보어 안에 넣고 가죽으로 덮음. 각인: 옆면 긴 팔.",
